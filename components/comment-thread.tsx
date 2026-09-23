@@ -1,0 +1,252 @@
+"use client"
+
+import { useMemo, useState, useTransition } from "react"
+import Link from "next/link"
+import { acceptComment } from "@/app/actions/forum"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { CommentForm } from "@/components/comment-form"
+import { VoteButtons } from "@/components/vote-buttons"
+import { CommentReactions } from "@/components/comment-reactions"
+import { RichContent } from "@/components/rich-content"
+import { timeAgo } from "@/lib/format"
+import type { TopicComment } from "@/lib/queries"
+import { Award, Bot, CheckCircle2, Laugh, MessageCircle, Quote } from "lucide-react"
+
+type CommentNode = TopicComment & { children: CommentNode[] }
+
+function buildTree(flat: TopicComment[]): CommentNode[] {
+  const map = new Map<number, CommentNode>()
+  const roots: CommentNode[] = []
+  for (const c of flat) map.set(c.id, { ...c, children: [] })
+  for (const c of flat) {
+    const node = map.get(c.id)!
+    if (c.parentId && map.has(c.parentId)) {
+      map.get(c.parentId)!.children.push(node)
+    } else {
+      roots.push(node)
+    }
+  }
+  return roots
+}
+
+export function CommentThread({
+  comments,
+  topicId,
+  isAuthed,
+  isLocked,
+  acceptedCommentId = null,
+  canAccept = false,
+}: {
+  comments: TopicComment[]
+  topicId: number
+  isAuthed: boolean
+  isLocked: boolean
+  acceptedCommentId?: number | null
+  canAccept?: boolean
+}) {
+  const tree = useMemo(() => {
+    const roots = buildTree(comments)
+    // Surface the accepted answer's root thread at the top
+    if (acceptedCommentId) {
+      const idx = roots.findIndex(
+        (r) => r.id === acceptedCommentId || hasDescendant(r, acceptedCommentId),
+      )
+      if (idx > 0) {
+        const [accepted] = roots.splice(idx, 1)
+        roots.unshift(accepted)
+      }
+    }
+    return roots
+  }, [comments, acceptedCommentId])
+
+  return (
+    <div className="flex flex-col gap-4">
+      {tree.map((node) => (
+        <CommentItem
+          key={node.id}
+          node={node}
+          topicId={topicId}
+          isAuthed={isAuthed}
+          isLocked={isLocked}
+          depth={0}
+          acceptedCommentId={acceptedCommentId}
+          canAccept={canAccept}
+        />
+      ))}
+    </div>
+  )
+}
+
+function hasDescendant(node: CommentNode, id: number): boolean {
+  return node.children.some((c) => c.id === id || hasDescendant(c, id))
+}
+
+function CommentItem({
+  node,
+  topicId,
+  isAuthed,
+  isLocked,
+  depth,
+  acceptedCommentId,
+  canAccept,
+}: {
+  node: CommentNode
+  topicId: number
+  isAuthed: boolean
+  isLocked: boolean
+  depth: number
+  acceptedCommentId: number | null
+  canAccept: boolean
+}) {
+  const [replying, setReplying] = useState(false)
+  const [quotePrefill, setQuotePrefill] = useState("")
+  const [acceptPending, startAcceptTransition] = useTransition()
+
+  const isAccepted = acceptedCommentId === node.id
+
+  function startQuote() {
+    const quoted = node.content
+      .split("\n")
+      .map((l) => `> ${l}`)
+      .join("\n")
+    setQuotePrefill(`${quoted}\n\n`)
+    setReplying(true)
+  }
+
+  function toggleAccept() {
+    if (acceptPending) return
+    startAcceptTransition(async () => {
+      try {
+        await acceptComment(topicId, isAccepted ? null : node.id)
+      } catch {
+        // server revalidates; errors are non-fatal here
+      }
+    })
+  }
+
+  return (
+    <div className={depth > 0 ? "border-l-2 border-border/60 pl-3 sm:pl-4" : ""}>
+      {isAccepted && (
+        <div className="mb-1 inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+          <CheckCircle2 className="size-3" /> En İyi Cevap
+        </div>
+      )}
+      <div className={`flex gap-2.5 ${isAccepted ? "rounded-lg border border-primary/40 bg-primary/5 p-2" : ""}`}>
+        <Link href={`/profil/${node.authorUsername}`} className="shrink-0 pt-0.5">
+          <Avatar className="size-7">
+            <AvatarImage src={node.authorAvatarUrl ?? undefined} alt="" />
+            <AvatarFallback className="text-[10px]">{node.authorDisplayName.slice(0, 2)}</AvatarFallback>
+          </Avatar>
+        </Link>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <Link href={`/profil/${node.authorUsername}`} className="font-medium text-foreground hover:text-primary">
+              {node.authorDisplayName}
+            </Link>
+            {node.authorIsAI && (
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-secondary px-1.5 py-px text-[10px] font-semibold text-secondary-foreground">
+                <Bot className="size-2.5" /> AI
+              </span>
+            )}
+            {((node as any).authorFeaturedBadges?.length ?? 0) > 0 && (
+              <span title="Rozet vitrini aktif" className="inline-flex items-center">
+                <Award className="size-3 text-amber-400" />
+              </span>
+            )}
+            <span className="font-mono text-[10px]">svy {node.authorLevel}</span>
+            <span aria-hidden="true">·</span>
+            <time dateTime={new Date(node.createdAt).toISOString()}>{timeAgo(node.createdAt)}</time>
+            {node.isFunny && <Laugh className="size-3 text-accent" aria-label="Komik yorum" />}
+          </div>
+          {node.isDeleted ? (
+            <p className="mt-1 text-sm italic text-muted-foreground">Bu yorum kaldırıldı.</p>
+          ) : (
+            <div className="mt-1">
+              <RichContent content={node.content} />
+              <CommentReactions
+                commentId={node.id}
+                initialReactions={(node as any).reactions ?? []}
+                isAuthed={isAuthed}
+              />
+            </div>
+          )}
+          <div className="mt-1.5 flex items-center gap-3">
+            <VoteButtons
+              targetType="comment"
+              targetId={node.id}
+              score={node.score}
+              isAuthed={isAuthed}
+              orientation="horizontal"
+            />
+            {!isLocked && depth < 4 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuotePrefill("")
+                  setReplying((v) => !v)
+                }}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <MessageCircle className="size-3.5" /> Cevapla
+              </button>
+            )}
+            {!isLocked && !node.isDeleted && depth < 4 && (
+              <button
+                type="button"
+                onClick={startQuote}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <Quote className="size-3.5" /> Alıntıla
+              </button>
+            )}
+            {canAccept && !node.isDeleted && (
+              <button
+                type="button"
+                onClick={toggleAccept}
+                disabled={acceptPending}
+                className={`inline-flex items-center gap-1 text-xs transition-colors ${
+                  isAccepted ? "text-primary" : "text-muted-foreground hover:text-primary"
+                }`}
+              >
+                <CheckCircle2 className="size-3.5" />
+                {isAccepted ? "En İyi Cevabı Kaldır" : "En İyi Cevap Seç"}
+              </button>
+            )}
+          </div>
+          {replying && (
+            <div className="mt-2">
+              <CommentForm
+                key={quotePrefill ? "quote" : "plain"}
+                topicId={topicId}
+                parentId={node.id}
+                isAuthed={isAuthed}
+                autoFocus
+                initialContent={quotePrefill}
+                onDone={() => {
+                  setReplying(false)
+                  setQuotePrefill("")
+                }}
+              />
+            </div>
+          )}
+          {node.children.length > 0 && (
+            <div className="mt-3 flex flex-col gap-3">
+              {node.children.map((child) => (
+                <CommentItem
+                  key={child.id}
+                  node={child}
+                  topicId={topicId}
+                  isAuthed={isAuthed}
+                  isLocked={isLocked}
+                  depth={depth + 1}
+                  acceptedCommentId={acceptedCommentId}
+                  canAccept={canAccept}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
