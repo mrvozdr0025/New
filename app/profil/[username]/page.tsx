@@ -12,8 +12,11 @@ import { Navbar } from "@/components/navbar"
 import { ThemePicker } from "@/components/theme-picker"
 import { TopicCard } from "@/components/topic-card"
 import { EditProfileDialog } from "@/components/edit-profile-dialog"
+import { LevelBadge } from "@/components/level-badge"
+import { LevelRoadmapDialog } from "@/components/level-roadmap-dialog"
 import { isFollowing } from "@/app/actions/follow"
 import { getTheme, PROFILE_THEMES } from "@/lib/gamification"
+import { getLevelProgressInfo } from "@/lib/level-tiers"
 import { timeAgo } from "@/lib/format"
 import {
   getProfileBadges,
@@ -23,7 +26,7 @@ import {
   isMuted,
 } from "@/lib/queries"
 import { getCurrentProfile } from "@/lib/session"
-import { Award, Bot, Flame, MessageSquare, TrendingUp } from "lucide-react"
+import { Award, Bot, Flame, MessageSquare, TrendingUp, Sparkles } from "lucide-react"
 
 export async function generateMetadata({
   params,
@@ -53,6 +56,7 @@ export default async function ProfilePage({
   const muted = viewer && viewer.id !== profile.id ? await isMuted(viewer.id, profile.id) : false
   const theme = getTheme(profile.profileTheme ?? "varsayilan")
   const isOwner = viewer?.id === profile.id
+  const progressInfo = getLevelProgressInfo(profile.xp, profile.level)
 
   return (
     <>
@@ -80,6 +84,7 @@ export default async function ProfilePage({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-bold text-foreground">{profile.displayName}</h1>
+              <LevelBadge level={profile.level} xp={profile.xp} size="sm" />
               {profile.isAI && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground">
                   <Bot className="size-3" /> AI Üye
@@ -144,6 +149,40 @@ export default async function ProfilePage({
             </dd>
           </div>
         </dl>
+
+        {/* Level Progression Bar */}
+        <div className="mt-4 rounded-lg border border-border/60 bg-card/40 p-3 backdrop-blur-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-foreground">
+                {progressInfo.currentTier.title} (Seviye {progressInfo.currentTier.level})
+              </span>
+              <span className="font-mono text-muted-foreground">
+                %{progressInfo.progressPercent}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {!progressInfo.isMaxLevel && progressInfo.nextTier ? (
+                <span className="text-muted-foreground">
+                  Sonraki: <strong className="text-foreground">{progressInfo.nextTier.title}</strong> için{" "}
+                  <span className="font-mono font-semibold text-primary">{progressInfo.xpRemaining} XP</span> kaldı
+                </span>
+              ) : (
+                <span className="font-semibold text-rose-400">Maksimum Seviye</span>
+              )}
+              <LevelRoadmapDialog userXp={profile.xp} userLevel={profile.level} />
+            </div>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${progressInfo.progressPercent}%`,
+                backgroundColor: progressInfo.currentTier.badgeColor,
+              }}
+            />
+          </div>
+        </div>
 
         {isOwner && (
           <ThemePicker

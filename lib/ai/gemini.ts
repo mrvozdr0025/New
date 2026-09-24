@@ -13,6 +13,37 @@ import { and, asc, eq, gt, isNull, lt, or, sql } from "drizzle-orm"
 
 export const GEMINI_MODEL_ID = "gemini-3.8-flash"
 
+export const AVAILABLE_MODELS = [
+  {
+    id: "gemini-3.8-flash",
+    name: "Gemini 3.8 Flash",
+    description: "Varsayılan, hızlı ve dengeli model. Forum tartışmaları, botlar ve özetleme için ideal.",
+    badge: "Önerilen",
+    tier: "Hızlı / Dengeli",
+  },
+  {
+    id: "gemini-3.1-flash-lite",
+    name: "Gemini 3.1 Flash Lite",
+    description: "Ultra yüksek hız ve en düşük token maliyeti. Anlık hızlı kontroller ve filtreler için.",
+    badge: "Lite",
+    tier: "Ultra Hızlı",
+  },
+  {
+    id: "gemini-3.1-pro-preview",
+    name: "Gemini 3.1 Pro (Preview)",
+    description: "Karmaşık mantık yürütme, derin analiz ve detaylı uzun içerik üretimi.",
+    badge: "Pro",
+    tier: "Derin Mantık",
+  },
+  {
+    id: "gemini-flash-latest",
+    name: "Gemini Flash (En Güncel)",
+    description: "Google'ın en son kararlı Flash sürümüne otomatik dinamik yönlendirme.",
+    badge: "Latest",
+    tier: "Otomatik Güncel",
+  },
+] as const
+
 const QUOTA_MSG =
   "AI şu an duraklatıldı: tüm API anahtarlarının kotası doldu veya günlük limit aşıldı. Admin panelinden yeni anahtar ekleyebilir veya limiti yükseltebilirsiniz."
 
@@ -64,8 +95,8 @@ async function consumeBudget(): Promise<void> {
 
 // ---------------------------------------------------------------- Cache --
 
-function cacheKeyFor(system: string, prompt: string): string {
-  return createHash("sha256").update(`${GEMINI_MODEL_ID}\n${system}\n${prompt}`).digest("hex")
+function cacheKeyFor(modelId: string, system: string, prompt: string): string {
+  return createHash("sha256").update(`${modelId}\n${system}\n${prompt}`).digest("hex")
 }
 
 async function cacheGet(key: string): Promise<string | null> {
@@ -124,7 +155,7 @@ async function getUsableKeys() {
     apiKey: r.apiKey,
   }))
   // Env var key acts as the final fallback (id: null → not tracked in DB).
-  const envKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
+  const envKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY
   if (envKey && !rows.some((r) => r.apiKey === envKey)) {
     pool.push({ id: null, apiKey: envKey })
   }
@@ -147,6 +178,7 @@ async function benchKey(keyId: number): Promise<void> {
 export async function geminiText(opts: {
   system: string
   prompt: string
+  modelId?: string
   temperature?: number
   maxOutputTokens?: number
   /** Skip cache for prompts that should always produce fresh output. */
@@ -155,12 +187,15 @@ export async function geminiText(opts: {
   useSearch?: boolean
 }): Promise<string> {
   const settings = await getAISettingsRow()
+  const modelId = opts.modelId || settings.modelId || GEMINI_MODEL_ID
+  const temperature = opts.temperature ?? settings.temperature ?? 1.0
+  const maxOutputTokens = opts.maxOutputTokens ?? settings.maxTokens ?? 2048
 
   // Search-grounded responses are time-sensitive; never serve them from cache.
   const skipCache = opts.noCache || opts.useSearch
 
   // 1. Cache first — a hit costs nothing and ignores pause/limit states.
-  const key = cacheKeyFor(opts.system, opts.prompt)
+  const key = cacheKeyFor(modelId, opts.system, opts.prompt)
   if (!skipCache) {
     const cached = await cacheGet(key)
     if (cached) return cached
@@ -184,19 +219,17 @@ export async function geminiText(opts: {
     try {
       const provider = createGoogleGenerativeAI({ apiKey: entry.apiKey })
       const { text } = await generateText({
-        model: provider(GEMINI_MODEL_ID),
+        model: provider(modelId),
         system: opts.system,
         prompt: opts.prompt,
-        temperature: opts.temperature ?? 1.0,
-        maxOutputTokens: opts.maxOutputTokens ?? 2048,
+        temperature,
+        maxOutputTokens,
         // Google Search grounding: model searches the web before answering.
         ...(opts.useSearch
           ? { tools: { google_search: provider.tools.googleSearch({}) } }
           : {}),
         providerOptions: {
           google: {
-            // gemini-2.5-flash is a thinking model; without this, reasoning tokens
-            // consume the output budget and responses get cut off mid-sentence.
             thinkingConfig: { thinkingBudget: 0 },
           },
         },
@@ -227,3 +260,88 @@ export async function geminiText(opts: {
     .where(eq(aiSettings.id, 1))
   throw new Error(QUOTA_MSG, { cause: lastError })
 }
+
+// ----------------------------------------------------------- Direct API Test --
+
+export type TestResult = {
+  success: boolean
+  modelId: string
+  text?: string
+  latencyMs: number
+  keyPreview: string
+  charCount?: number
+  error?: string
+}
+
+export async function testGeminiApiDirectly(opts: {
+  prompt: string
+  modelId?: string
+  temperature?: number
+}): Promise<TestResult> {
+  const startTime = performance.now()
+  const settings = await getAISettingsRow()
+  const modelId = opts.modelId?.trim() || settings.modelId || GEMINI_MODEL_ID
+  const pool = await getUsableKeys()
+
+  if (pool.length === 0) {
+    return {
+      success: false,
+      modelId,
+      latencyMs: Math.round(performance.now() - startTime),
+      keyPreview: "Yok (Tüm anahtarlar tükendi veya tanımlı anahtar yok)",
+      error:
+        "Kullanılabilir API anahtarı bulunamadı. Lütfen aşağıdan yeni bir anahtar ekleyin veya GEMINI_API_KEY ortam değişkenini kontrol edin.",
+    }
+  }
+
+  let lastError = ""
+  for (const entry of pool) {
+    const keyPreview =
+      entry.apiKey.length > 12
+        ? `${entry.apiKey.slice(0, 8)}...${entry.apiKey.slice(-4)}`
+        : "Gizli Anahtar"
+    try {
+      const provider = createGoogleGenerativeAI({ apiKey: entry.apiKey })
+      const { text } = await generateText({
+        model: provider(modelId),
+        system:
+          "Sen Neonsform forumunun yapay zeka asistanısın. Test taleplerine doğrudan, açık ve net Türkçe yanıtlar verirsin.",
+        prompt: opts.prompt,
+        temperature: opts.temperature ?? settings.temperature ?? 0.7,
+        maxOutputTokens: 1024,
+      })
+      const latencyMs = Math.round(performance.now() - startTime)
+      const cleanText = text.trim()
+
+      if (entry.id !== null) {
+        await db
+          .update(aiApiKeys)
+          .set({ lastUsedAt: new Date() })
+          .where(eq(aiApiKeys.id, entry.id))
+      }
+
+      return {
+        success: true,
+        modelId,
+        text: cleanText,
+        latencyMs,
+        keyPreview,
+        charCount: cleanText.length,
+      }
+    } catch (err: any) {
+      lastError = err?.message || String(err)
+      if (isQuotaError(err) && entry.id !== null) {
+        await benchKey(entry.id)
+      }
+    }
+  }
+
+  return {
+    success: false,
+    modelId,
+    latencyMs: Math.round(performance.now() - startTime),
+    keyPreview: "Başarısız",
+    error: lastError || "API isteği işlenemedi.",
+  }
+}
+

@@ -22,7 +22,7 @@ import {
 } from "@/lib/db/schema"
 import { moderateComment } from "@/lib/ai/moderate"
 import { slugify } from "@/lib/format"
-import { touchStreak } from "@/lib/gamification"
+import { touchStreak, awardGamificationXp } from "@/lib/gamification"
 import { sendPushToProfile } from "@/lib/push"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { requireProfile } from "@/lib/session"
@@ -51,13 +51,7 @@ async function awardBadge(profileId: number, badgeSlug: string) {
 }
 
 async function addXp(profileId: number, amount: number) {
-  await db
-    .update(profiles)
-    .set({
-      xp: sql`${profiles.xp} + ${amount}`,
-      level: sql`GREATEST(1, FLOOR(SQRT((${profiles.xp} + ${amount}) / 50.0)))::int`,
-    })
-    .where(eq(profiles.id, profileId))
+  await awardGamificationXp(profileId, amount)
 }
 
 function sanitize(text: string, maxLen: number): string {
@@ -85,12 +79,24 @@ export async function attachTags(topicId: number, names: string[]) {
 
 export async function createTopic(formData: FormData) {
   const profile = await requireProfile()
+  if (profile.isMuted) {
+    throw new Error("Hesabınız susturulmuştur (yalnızca okuma modu). Yeni konu açamazsınız.")
+  }
   await checkRateLimit(profile.id, "topic")
 
-  const title = sanitize(String(formData.get("title") ?? ""), 200)
-  const content = sanitize(String(formData.get("content") ?? ""), 10000)
+  let title = sanitize(String(formData.get("title") ?? ""), 200)
+  let content = sanitize(String(formData.get("content") ?? ""), 10000)
   const categoryId = Number(formData.get("categoryId"))
   if (title.length < 10) throw new Error("Başlık en az 10 karakter olmalı")
+
+  // Spam & Blacklist Filter Check
+  const { checkAndFilterContent } = await import("@/lib/spam")
+  const spamCheck = await checkAndFilterContent(content, title)
+  if (!spamCheck.allowed) {
+    throw new Error(spamCheck.blockedReason || "İçeriğiniz güvenlik ve spam filtremiz tarafından engellendi.")
+  }
+  content = spamCheck.filteredContent
+  if (spamCheck.filteredTitle) title = spamCheck.filteredTitle
 
   const [category] = await db.select().from(categories).where(eq(categories.id, categoryId)).limit(1)
   if (!category) throw new Error("Geçersiz kategori")
@@ -195,13 +201,21 @@ export async function acceptComment(topicId: number, commentId: number | null) {
     if (comment.authorProfileId === profile.id) {
       throw new Error("Kendi yorumunu en iyi cevap seçemezsin")
     }
-    // Reward the answer author: +25 XP and a notification.
+    // Reward the answer author: +25 XP, +10 Karma, and a notification.
     await addXp(comment.authorProfileId, 25)
+    await db
+      .update(profiles)
+      .set({ karma: sql`${profiles.karma} + 10` })
+      .where(eq(profiles.id, comment.authorProfileId))
+
+    // Award "cozum-mimari" badge
+    await awardBadge(comment.authorProfileId, "cozum-mimari")
+
     await db.insert(notifications).values({
       profileId: comment.authorProfileId,
       actorProfileId: profile.id,
       type: "accept",
-      message: `${profile.displayName} yorumunu "En İyi Cevap" seçti (+25 XP)`,
+      message: `${profile.displayName} cevabını "En İyi Cevap / Çözüm" seçti (+25 XP, +10 Karma)`,
       topicId,
       commentId,
     })
@@ -219,12 +233,23 @@ export async function acceptComment(topicId: number, commentId: number | null) {
 
 export async function createComment(topicId: number, parentId: number | null, content: string) {
   const profile = await requireProfile()
+  if (profile.isMuted) {
+    throw new Error("Hesabınız susturulmuştur (yalnızca okuma modu). Yorum yazamazsınız.")
+  }
   await checkRateLimit(profile.id, "comment")
 
-  const clean = sanitize(content, 5000)
+  let clean = sanitize(content, 5000)
   const [topic] = await db.select().from(topics).where(eq(topics.id, topicId)).limit(1)
   if (!topic) throw new Error("Konu bulunamadı")
   if (topic.isLocked) throw new Error("Bu konu kilitli")
+
+  // Spam & Blacklist Filter Check
+  const { checkAndFilterContent } = await import("@/lib/spam")
+  const spamCheck = await checkAndFilterContent(clean)
+  if (!spamCheck.allowed) {
+    throw new Error(spamCheck.blockedReason || "Yorumunuz güvenlik ve spam filtremiz tarafından engellendi.")
+  }
+  clean = spamCheck.filteredContent
 
   const [comment] = await db
     .insert(comments)
@@ -491,4 +516,78 @@ export async function togglePinTopic(topicId: number) {
   revalidatePath("/")
   return { isPinned: nextPinned }
 }
+
+export async function editTopic(topicId: number, newTitle: string, newContent: string, reason?: string) {
+  const profile = await requireProfile()
+  if (profile.isMuted) throw new Error("Hesabınız susturulmuştur.")
+
+  const [topic] = await db.select().from(topics).where(eq(topics.id, topicId)).limit(1)
+  if (!topic) throw new Error("Konu bulunamadı")
+
+  const canEdit = profile.isAdmin || profile.id === topic.authorProfileId
+  if (!canEdit) throw new Error("Bu konuyu düzenleme yetkiniz yok")
+
+  let title = sanitize(newTitle, 200)
+  let content = sanitize(newContent, 10000)
+
+  // Filter content
+  const { checkAndFilterContent } = await import("@/lib/spam")
+  const check = await checkAndFilterContent(content, title)
+  if (!check.allowed) {
+    throw new Error(check.blockedReason || "İçerik filtreye takıldı.")
+  }
+  content = check.filteredContent
+  if (check.filteredTitle) title = check.filteredTitle
+
+  // Record revision
+  const { recordContentRevision } = await import("@/app/actions/moderation")
+  await recordContentRevision("topic", topicId, topic.content, topic.title, profile.id, reason || "Konu güncellendi")
+
+  await db
+    .update(topics)
+    .set({
+      title,
+      content,
+      lastActivityAt: new Date(),
+    })
+    .where(eq(topics.id, topicId))
+
+  revalidatePath(`/konu/${topic.slug}`)
+  revalidatePath("/")
+  return { success: true }
+}
+
+export async function editComment(commentId: number, newContent: string, reason?: string) {
+  const profile = await requireProfile()
+  if (profile.isMuted) throw new Error("Hesabınız susturulmuştur.")
+
+  const [comment] = await db.select().from(comments).where(eq(comments.id, commentId)).limit(1)
+  if (!comment) throw new Error("Yorum bulunamadı")
+
+  const canEdit = profile.isAdmin || profile.id === comment.authorProfileId
+  if (!canEdit) throw new Error("Bu yorumu düzenleme yetkiniz yok")
+
+  let content = sanitize(newContent, 5000)
+
+  const { checkAndFilterContent } = await import("@/lib/spam")
+  const check = await checkAndFilterContent(content)
+  if (!check.allowed) {
+    throw new Error(check.blockedReason || "Yorum filtreye takıldı.")
+  }
+  content = check.filteredContent
+
+  const { recordContentRevision } = await import("@/app/actions/moderation")
+  await recordContentRevision("comment", commentId, comment.content, undefined, profile.id, reason || "Yorum güncellendi")
+
+  await db
+    .update(comments)
+    .set({ content })
+    .where(eq(comments.id, commentId))
+
+  const [topic] = await db.select({ slug: topics.slug }).from(topics).where(eq(topics.id, comment.topicId)).limit(1)
+  if (topic) revalidatePath(`/konu/${topic.slug}`)
+
+  return { success: true }
+}
+
 

@@ -14,6 +14,8 @@ import { VoteButtons } from "@/components/vote-buttons"
 import { BookmarkButton } from "@/components/bookmark-button"
 import { RelatedTopics } from "@/components/related-topics"
 import { ReadingProgressBar } from "@/components/reading-progress-bar"
+import { LevelBadge } from "@/components/level-badge"
+import { ShareButtons } from "@/components/share-buttons"
 import { isFollowing, getFollowerCount } from "@/app/actions/follow"
 import { isTopicBookmarked } from "@/app/actions/bookmarks"
 import { timeAgo } from "@/lib/format"
@@ -27,7 +29,7 @@ import {
   incrementViewCount,
 } from "@/lib/queries"
 import { getCurrentProfile } from "@/lib/session"
-import { Bot, Eye, Flame, Lock, MessageSquare, Pin } from "lucide-react"
+import { Bot, CheckCircle2, Eye, Flame, Lock, MessageSquare, Pin } from "lucide-react"
 
 export async function generateMetadata({
   params,
@@ -37,9 +39,24 @@ export async function generateMetadata({
   const { slug } = await params
   const topic = await getTopicBySlug(slug)
   if (!topic) return { title: "Konu bulunamadı" }
+  const description = topic.content.slice(0, 180)
   return {
-    title: `${topic.title}`,
-    description: topic.content.slice(0, 160),
+    title: `${topic.title} | neonsform`,
+    description,
+    openGraph: {
+      title: topic.title,
+      description,
+      type: "article",
+      url: `/konu/${topic.slug}`,
+      siteName: "neonsform",
+      publishedTime: new Date(topic.createdAt).toISOString(),
+      authors: [topic.authorDisplayName],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: topic.title,
+      description,
+    },
   }
 }
 
@@ -135,6 +152,11 @@ export default async function TopicPage({
               <Pin className="size-3" /> Sabit
             </Badge>
           )}
+          {topic.acceptedCommentId && (
+            <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-400 gap-1 text-[10px] font-semibold">
+              <CheckCircle2 className="size-3 text-emerald-400" /> Çözüldü
+            </Badge>
+          )}
           {topic.isHot && (
             <Badge variant="outline" className="border-accent/40 gap-1 text-[10px] text-accent">
               <Flame className="size-3" /> Sıcak
@@ -162,6 +184,7 @@ export default async function TopicPage({
             </Avatar>
             {topic.authorDisplayName}
           </Link>
+          <LevelBadge level={topic.authorLevel} size="xs" />
           {topic.authorIsAI && (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-secondary px-1.5 py-px text-[10px] font-semibold text-secondary-foreground">
               <Bot className="size-2.5" /> AI
@@ -190,6 +213,22 @@ export default async function TopicPage({
                 #{tag.name}
               </Link>
             ))}
+          </div>
+        )}
+
+        <ShareButtons title={topic.title} slug={topic.slug} />
+
+        {topic.acceptedCommentId && (
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">
+            <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
+            <span>Bu konunun çözümü / en faydalı cevabı aşağıda <strong>En İyi Cevap</strong> olarak işaretlenmiştir.</span>
+          </div>
+        )}
+
+        {canAccept && !topic.acceptedCommentId && comments.length > 0 && (
+          <div className="mt-4 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+            <CheckCircle2 className="size-4 shrink-0 text-primary" />
+            <span>Konu sahibi olarak, aradığın cevabı veya en faydalı yorumu <strong>En İyi Cevap Seç</strong> butonuyla işaretleyebilir ve yazara +25 XP kazandırabilirsin.</span>
           </div>
         )}
 

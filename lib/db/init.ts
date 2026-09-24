@@ -273,6 +273,9 @@ CREATE TABLE IF NOT EXISTS ai_api_keys (
 
 CREATE TABLE IF NOT EXISTS ai_settings (
   id integer PRIMARY KEY DEFAULT 1,
+  "modelId" text NOT NULL DEFAULT 'gemini-3.8-flash',
+  "temperature" double precision NOT NULL DEFAULT 1.0,
+  "maxTokens" integer NOT NULL DEFAULT 2048,
   "dailyActionLimit" integer NOT NULL DEFAULT 50,
   "isPaused" boolean NOT NULL DEFAULT false,
   "pausedReason" text,
@@ -387,6 +390,79 @@ CREATE TABLE IF NOT EXISTS bookmarks (
   "createdAt" timestamp NOT NULL DEFAULT now(),
   UNIQUE ("profileId", "topicId")
 );
+
+CREATE TABLE IF NOT EXISTS spam_filters (
+  id serial PRIMARY KEY,
+  pattern text NOT NULL,
+  type text NOT NULL DEFAULT 'word',
+  action text NOT NULL DEFAULT 'block',
+  replacement text DEFAULT '***',
+  "hitCount" integer NOT NULL DEFAULT 0,
+  "isActive" boolean NOT NULL DEFAULT true,
+  "createdAt" timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS content_revisions (
+  id serial PRIMARY KEY,
+  "targetType" text NOT NULL,
+  "targetId" integer NOT NULL,
+  "previousTitle" text,
+  "previousContent" text NOT NULL,
+  "newContent" text,
+  "editedByProfileId" integer NOT NULL,
+  reason text,
+  "createdAt" timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS user_penalties (
+  id serial PRIMARY KEY,
+  "targetProfileId" integer NOT NULL,
+  "moderatorProfileId" integer,
+  "actionType" text NOT NULL,
+  reason text NOT NULL,
+  "durationHours" integer,
+  "expiresAt" timestamp,
+  "ipAddress" text,
+  "isActive" boolean NOT NULL DEFAULT true,
+  "createdAt" timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS newsletters (
+  id serial PRIMARY KEY,
+  title text NOT NULL,
+  content text NOT NULL,
+  status text NOT NULL DEFAULT 'draft',
+  "sentAt" timestamp,
+  "recipientCount" integer NOT NULL DEFAULT 0,
+  "createdAt" timestamp NOT NULL DEFAULT now(),
+  "updatedAt" timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS announcements (
+  id serial PRIMARY KEY,
+  title text NOT NULL,
+  message text NOT NULL,
+  "linkUrl" text,
+  "linkText" text,
+  "bannerType" text NOT NULL DEFAULT 'info',
+  "isActive" boolean NOT NULL DEFAULT true,
+  "createdAt" timestamp NOT NULL DEFAULT now()
+);
+
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user';
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS "isMuted" boolean NOT NULL DEFAULT false;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS "isShadowBanned" boolean NOT NULL DEFAULT false;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS "bannedUntil" timestamp;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS "mutedUntil" timestamp;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS "customPermissions" jsonb DEFAULT '{}';
+
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS "resolutionNote" text;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS "resolvedByProfileId" integer;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS "resolvedAt" timestamp;
+
+ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS "modelId" text NOT NULL DEFAULT 'gemini-3.8-flash';
+ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS "temperature" double precision NOT NULL DEFAULT 1.0;
+ALTER TABLE ai_settings ADD COLUMN IF NOT EXISTS "maxTokens" integer NOT NULL DEFAULT 2048;
 `
 
 const PERSONAS = [
@@ -420,6 +496,9 @@ const BADGES = [
   ["Yüzler Kulübü", "100-karma", "100 karmaya ulaştın", "star", "#facc15"],
   ["Gündem Yaratan", "populer-konu", "Bir konun 50+ oy aldı", "flame", "#fb923c"],
   ["Kıdemli", "seviye-5", "5. seviyeye ulaştın", "shield", "#4ade80"],
+  ["Siber Üstat", "siber-ustat", "6. seviyeye ulaşarak Siber Üstat unvanı kazandın", "award", "#facc15"],
+  ["Çözüm Mimarı", "cozum-mimari", "En az bir cevabın 'En İyi Cevap / Çözüm' seçildi", "check-circle", "#10b981"],
+  ["Yardımsever Deha", "yardimsever-deha", "5 farklı soruda En İyi Çözüm ürettin", "zap", "#06b6d4"],
   ["Tartışma Ustası", "tartisma-ustasi", "100+ yorum yazdın", "swords", "#f87171"],
   ["Komedyen", "komedyen", "Bir yorumun en komikler listesine girdi", "laugh", "#fbbf24"],
   ["Gece Kuşu", "gece-kusu", "Gece 3'ten sonra aktiftin", "moon", "#818cf8"],

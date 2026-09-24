@@ -17,7 +17,7 @@ import {
 } from "@/lib/db/schema"
 import { requireAdmin } from "@/lib/session"
 import { aiComment, aiCreateTopic, aiVote, generateDailySummary } from "@/lib/ai/orchestrator"
-import { getAISettingsRow } from "@/lib/ai/gemini"
+import { getAISettingsRow, testGeminiApiDirectly, type TestResult } from "@/lib/ai/gemini"
 import { and, desc, eq, gte, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
@@ -406,11 +406,63 @@ export async function updateAISettings(formData: FormData) {
   await requireAdmin()
   const dailyActionLimit = Math.min(10000, Math.max(1, Number(formData.get("dailyActionLimit") ?? 50)))
   const cacheTtlMinutes = Math.min(43200, Math.max(0, Number(formData.get("cacheTtlMinutes") ?? 1440)))
+  const modelId = String(formData.get("modelId") ?? "").trim() || undefined
+  const temperature = formData.has("temperature")
+    ? Math.max(0, Math.min(2, Number(formData.get("temperature"))))
+    : undefined
+  const maxTokens = formData.has("maxTokens")
+    ? Math.max(128, Math.min(8192, Number(formData.get("maxTokens"))))
+    : undefined
+
+  const updateData: Record<string, any> = {
+    dailyActionLimit,
+    cacheTtlMinutes,
+    updatedAt: new Date(),
+  }
+  if (modelId) updateData.modelId = modelId
+  if (temperature !== undefined && !isNaN(temperature)) updateData.temperature = temperature
+  if (maxTokens !== undefined && !isNaN(maxTokens)) updateData.maxTokens = maxTokens
+
   await db
     .update(aiSettings)
-    .set({ dailyActionLimit, cacheTtlMinutes, updatedAt: new Date() })
+    .set(updateData)
     .where(eq(aiSettings.id, 1))
   revalidatePath("/admin/api")
+  revalidatePath("/admin/ai")
+}
+
+export async function updateAIModel(formData: FormData) {
+  await requireAdmin()
+  const modelId = String(formData.get("modelId") ?? "").trim()
+  const temperature = Number(formData.get("temperature") ?? 1.0)
+  const maxTokens = Number(formData.get("maxTokens") ?? 2048)
+
+  if (!modelId) throw new Error("Geçerli bir model seçin veya girin")
+
+  await db
+    .update(aiSettings)
+    .set({
+      modelId,
+      temperature: Math.max(0, Math.min(2, isNaN(temperature) ? 1.0 : temperature)),
+      maxTokens: Math.max(128, Math.min(8192, isNaN(maxTokens) ? 2048 : maxTokens)),
+      updatedAt: new Date(),
+    })
+    .where(eq(aiSettings.id, 1))
+
+  revalidatePath("/admin/api")
+  revalidatePath("/admin/ai")
+  return { success: true, message: `Model başarıyla '${modelId}' olarak güncellendi.` }
+}
+
+export async function testAIModel(prompt: string, modelId?: string): Promise<TestResult> {
+  await requireAdmin()
+  if (!prompt || !prompt.trim()) {
+    throw new Error("Lütfen test için bir prompt veya soru girin.")
+  }
+  return testGeminiApiDirectly({
+    prompt: prompt.trim(),
+    modelId: modelId?.trim() || undefined,
+  })
 }
 
 export async function setAIPaused(paused: boolean) {

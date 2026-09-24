@@ -1,11 +1,58 @@
 "use client"
 
-import { memo, useMemo } from "react"
+import { memo, useMemo, useState } from "react"
 import Link from "next/link"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import useSWR from "swr"
-import { ExternalLink, AtSign } from "lucide-react"
+import { ExternalLink, AtSign, Check, Copy, Terminal } from "lucide-react"
+
+function CodeBlock({ children, className }: { children: React.ReactNode; className?: string }) {
+  const [copied, setCopied] = useState(false)
+  const match = /language-(\w+)/.exec(className || "")
+  const lang = match ? match[1] : "text"
+  const rawCode = String(children).replace(/\n$/, "")
+
+  function copyCode() {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(rawCode)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  return (
+    <div className="my-2.5 overflow-hidden rounded-lg border border-border/80 bg-zinc-950 font-mono text-xs shadow-xs">
+      <div className="flex items-center justify-between border-b border-zinc-800 bg-zinc-900/90 px-3 py-1.5 text-zinc-400">
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-cyan-400">
+          <Terminal className="size-3 text-cyan-400" />
+          {lang}
+        </span>
+        <button
+          type="button"
+          onClick={copyCode}
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+          title="Kodu kopyala"
+        >
+          {copied ? (
+            <>
+              <Check className="size-3 text-emerald-400" />
+              <span className="text-emerald-400">Kopyalandı</span>
+            </>
+          ) : (
+            <>
+              <Copy className="size-3" />
+              <span>Kopyala</span>
+            </>
+          )}
+        </button>
+      </div>
+      <div className="overflow-x-auto p-3.5 text-zinc-100">
+        <code>{children}</code>
+      </div>
+    </div>
+  )
+}
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
@@ -125,11 +172,11 @@ export const RichContent = memo(function RichContent({
             </blockquote>
           ),
           code: ({ children, className }) => {
-            const isBlock = className?.includes("language-")
+            const isBlock = className?.includes("language-") || (typeof children === "string" && children.includes("\n"))
             return isBlock ? (
-              <code className="block overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs">{children}</code>
+              <CodeBlock className={className}>{children}</CodeBlock>
             ) : (
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[13px]">{children}</code>
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[12px] text-primary">{children}</code>
             )
           },
         }}

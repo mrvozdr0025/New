@@ -104,6 +104,12 @@ export const profiles = pgTable(
     isAI: boolean("isAI").notNull().default(false),
     isAdmin: boolean("isAdmin").notNull().default(false),
     isBanned: boolean("isBanned").notNull().default(false),
+    role: text("role").notNull().default("user"), // 'superadmin' | 'admin' | 'moderator' | 'leader' | 'verified' | 'user'
+    isMuted: boolean("isMuted").notNull().default(false),
+    isShadowBanned: boolean("isShadowBanned").notNull().default(false),
+    bannedUntil: timestamp("bannedUntil"),
+    mutedUntil: timestamp("mutedUntil"),
+    customPermissions: jsonb("customPermissions").$type<Record<string, boolean>>().default({}),
     notificationSettings: jsonb("notificationSettings")
       .$type<NotificationPreferences>()
       .default(defaultNotificationPreferences),
@@ -307,6 +313,9 @@ export const reports = pgTable("reports", {
   targetId: integer("targetId").notNull(),
   reason: text("reason").notNull(),
   status: text("status").notNull().default("open"), // 'open' | 'resolved' | 'dismissed'
+  resolutionNote: text("resolutionNote"),
+  resolvedByProfileId: integer("resolvedByProfileId"),
+  resolvedAt: timestamp("resolvedAt"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
 })
 
@@ -360,6 +369,9 @@ export const aiApiKeys = pgTable("ai_api_keys", {
 // Singleton row (id=1): global AI cost/quota controls.
 export const aiSettings = pgTable("ai_settings", {
   id: integer("id").primaryKey().default(1),
+  modelId: text("modelId").notNull().default("gemini-3.8-flash"),
+  temperature: real("temperature").notNull().default(1.0),
+  maxTokens: integer("maxTokens").notNull().default(2048),
   dailyActionLimit: integer("dailyActionLimit").notNull().default(50),
   isPaused: boolean("isPaused").notNull().default(false),
   pausedReason: text("pausedReason"),
@@ -591,6 +603,96 @@ export const topicReads = pgTable(
     index("topic_reads_profile_idx").on(t.profileId),
   ],
 )
+
+// Spam & Kelime Filtresi (Blacklist): Yasaklı kelimeler, domainler, regex desenleri
+export const spamFilters = pgTable(
+  "spam_filters",
+  {
+    id: serial("id").primaryKey(),
+    pattern: text("pattern").notNull(), // kelime, domain veya regex ifadesi
+    type: text("type").notNull().default("word"), // 'word' | 'domain' | 'regex'
+    action: text("action").notNull().default("block"), // 'block' | 'censor' | 'flag'
+    replacement: text("replacement").default("***"),
+    hitCount: integer("hitCount").notNull().default(0),
+    isActive: boolean("isActive").notNull().default(true),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (t) => [index("spam_filters_pattern_idx").on(t.pattern)],
+)
+
+// İçerik Sürüm Geçmişi (Edit History): Konu ve yorumların değişiklik kayıtları
+export const contentRevisions = pgTable(
+  "content_revisions",
+  {
+    id: serial("id").primaryKey(),
+    targetType: text("targetType").notNull(), // 'topic' | 'comment'
+    targetId: integer("targetId").notNull(),
+    previousTitle: text("previousTitle"),
+    previousContent: text("previousContent").notNull(),
+    newContent: text("newContent"),
+    editedByProfileId: integer("editedByProfileId").notNull(),
+    reason: text("reason"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (t) => [
+    index("content_revisions_target_idx").on(t.targetType, t.targetId),
+    index("content_revisions_created_idx").on(t.createdAt),
+  ],
+)
+
+// Ceza & Askıya Alma (Bans / Mutes / Shadowbans / IP Bans)
+export const userPenalties = pgTable(
+  "user_penalties",
+  {
+    id: serial("id").primaryKey(),
+    targetProfileId: integer("targetProfileId").notNull(),
+    moderatorProfileId: integer("moderatorProfileId"),
+    actionType: text("actionType").notNull(), // 'ban' | 'mute' | 'shadowban' | 'warn' | 'ipban'
+    reason: text("reason").notNull(),
+    durationHours: integer("durationHours"), // null = süresiz
+    expiresAt: timestamp("expiresAt"), // null = süresiz
+    ipAddress: text("ipAddress"),
+    isActive: boolean("isActive").notNull().default(true),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (t) => [
+    index("user_penalties_target_idx").on(t.targetProfileId, t.isActive),
+    index("user_penalties_action_idx").on(t.actionType),
+  ],
+)
+
+// Bülten Gönderim & Taslak Yönetimi
+export const newsletters = pgTable(
+  "newsletters",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    status: text("status").notNull().default("draft"), // 'draft' | 'sent'
+    sentAt: timestamp("sentAt"),
+    recipientCount: integer("recipientCount").notNull().default(0),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+    updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  },
+  (t) => [index("newsletters_status_idx").on(t.status)],
+)
+
+// Önemli Duyuru Banner'ı: Sitenin tepesinde acil/önemli duyuru
+export const announcements = pgTable(
+  "announcements",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    message: text("message").notNull(),
+    linkUrl: text("linkUrl"),
+    linkText: text("linkText"),
+    bannerType: text("bannerType").notNull().default("info"), // 'info' | 'warning' | 'critical' | 'event'
+    isActive: boolean("isActive").notNull().default(true),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (t) => [index("announcements_active_idx").on(t.isActive)],
+)
+
 
 
 

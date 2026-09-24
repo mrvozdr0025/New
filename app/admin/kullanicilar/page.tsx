@@ -1,7 +1,13 @@
-import { getUserAdminList } from "@/app/actions/admin"
-import { UserAdminTable } from "@/components/admin/user-admin-table"
+import { getUserManagementList } from "@/app/actions/moderation"
+import { UserRbacManagement } from "@/components/admin/user-rbac-management"
+import { requireAdmin } from "@/lib/session"
+
+export const metadata = {
+  title: "Kullanıcı & Rol (RBAC) Yönetimi | Yönetim Paneli",
+}
 
 export default async function AdminUsersPage() {
-  const users = await getUserAdminList()
-  return <UserAdminTable users={users} />
+  await requireAdmin()
+  const users = await getUserManagementList("", "all")
+  return <UserRbacManagement initialUsers={users} />
 }

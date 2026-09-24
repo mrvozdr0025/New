@@ -44,6 +44,7 @@ const topicCols = {
   isPinned: topics.isPinned,
   isDailyTopic: topics.isDailyTopic,
   isPoll: topics.isPoll,
+  acceptedCommentId: topics.acceptedCommentId,
   createdAt: topics.createdAt,
   lastActivityAt: topics.lastActivityAt,
 }

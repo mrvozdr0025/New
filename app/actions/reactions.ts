@@ -6,8 +6,8 @@ import { getCurrentProfile, requireProfile } from "@/lib/session"
 import { and, eq, inArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
-export const ALLOWED_EMOJIS = ["👍", "❤️", "🔥", "😂", "🚀", "💡", "🎉"] as const
-export type AllowedEmoji = (typeof ALLOWED_EMOJIS)[number]
+import { ALLOWED_EMOJIS, type AllowedEmoji } from "@/lib/constants"
+export type { AllowedEmoji }
 
 export type ReactionSummary = {
   emoji: string

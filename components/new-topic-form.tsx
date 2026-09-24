@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
+import { RichMarkdownEditor } from "@/components/rich-markdown-editor"
 import { useDraft } from "@/hooks/use-draft"
 import { BarChart3, Loader2, Plus, X } from "lucide-react"
 
@@ -89,15 +89,15 @@ export function NewTopicForm({ categories }: { categories: { id: number; name: s
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="content">İçerik</Label>
-        <Textarea
+        <RichMarkdownEditor
           id="content"
           name="content"
           required
-          rows={8}
+          minRows={8}
           maxLength={10000}
           value={contentDraft.value}
-          onChange={(e) => contentDraft.setValue(e.target.value)}
-          placeholder="Düşüncelerini paylaş..."
+          onChange={(val) => contentDraft.setValue(val)}
+          placeholder="Düşüncelerini, sorularını veya kodlarını markdown ile detaylandır (sürükle-bırak görsel ve @etiket desteklenir)..."
         />
       </div>
 

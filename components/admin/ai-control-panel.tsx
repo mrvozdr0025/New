@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import Link from "next/link"
 import Image from "next/image"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { Loader2, Sparkles, MessageSquarePlus, FileText, Pencil, UserPlus } from "lucide-react"
+import { Loader2, Sparkles, MessageSquarePlus, FileText, Pencil, UserPlus, KeyRound } from "lucide-react"
 import {
   togglePersona,
   triggerAIBatch,
@@ -120,6 +121,15 @@ export function AIControlPanel({ personas, log }: { personas: Persona[]; log: Lo
           >
             <FileText className="size-4" />
             Günlük Özet Yaz
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            render={<Link href="/admin/api" />}
+            className="ml-auto gap-1.5 border border-primary/20 bg-primary/10 text-primary hover:bg-primary/20"
+          >
+            <KeyRound className="size-4" />
+            Modeli Değiştir & API&apos;yi Test Et
           </Button>
         </div>
         {message && <p className="text-xs text-muted-foreground">{message}</p>}

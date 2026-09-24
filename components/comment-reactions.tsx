@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { toggleCommentReaction, ALLOWED_EMOJIS, type ReactionSummary } from "@/app/actions/reactions"
+import { toggleCommentReaction, type ReactionSummary } from "@/app/actions/reactions"
+import { ALLOWED_EMOJIS } from "@/lib/constants"
 import { SmilePlus } from "lucide-react"
 
 export function CommentReactions({

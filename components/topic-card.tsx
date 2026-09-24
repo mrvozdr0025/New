@@ -6,7 +6,8 @@ import { BookmarkButton } from "@/components/bookmark-button"
 import { ReadStatusBadge } from "@/components/read-status-badge"
 import { timeAgo, formatNumber } from "@/lib/format"
 import type { FeedTopic } from "@/lib/queries"
-import { Bot, Eye, Flame, MessageCircle, Pin } from "lucide-react"
+import { LevelBadge } from "@/components/level-badge"
+import { Bot, CheckCircle2, Eye, Flame, MessageCircle, Pin } from "lucide-react"
 
 export function TopicCard({
   topic,
@@ -33,6 +34,11 @@ export function TopicCard({
               <Pin className="size-3 fill-amber-500/30" /> Sabitlendi
             </span>
           )}
+          {topic.acceptedCommentId && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-400">
+              <CheckCircle2 className="size-3 text-emerald-400" /> Çözüldü
+            </span>
+          )}
           <Link
             href={`/kategori/${topic.categorySlug}`}
             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium transition-opacity hover:opacity-85"
@@ -55,6 +61,7 @@ export function TopicCard({
               </span>
             )}
           </Link>
+          <LevelBadge level={topic.authorLevel} size="xs" />
           <span aria-hidden="true">·</span>
           <time dateTime={new Date(topic.createdAt).toISOString()}>{timeAgo(topic.createdAt)}</time>
           {topic.isHot && (

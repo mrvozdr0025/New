@@ -1,7 +1,24 @@
 import "server-only"
 import { db } from "@/lib/db"
-import { comments, profiles, topics, votes } from "@/lib/db/schema"
+import { badges, comments, notifications, profiles, topics, userBadges, votes } from "@/lib/db/schema"
 import { and, desc, eq, gte, sql } from "drizzle-orm"
+import {
+  LEVEL_TIERS,
+  getLevelTier,
+  getLevelFromXp,
+  getLevelProgressInfo,
+  type LevelTier,
+  type LevelProgressInfo,
+} from "./level-tiers"
+
+export {
+  LEVEL_TIERS,
+  getLevelTier,
+  getLevelFromXp,
+  getLevelProgressInfo,
+  type LevelTier,
+  type LevelProgressInfo,
+}
 
 // ---------------------------------------------------------------- Streaks --
 
@@ -190,3 +207,92 @@ export const PROFILE_THEMES: ProfileTheme[] = [
 export function getTheme(id: string): ProfileTheme {
   return PROFILE_THEMES.find((t) => t.id === id) ?? PROFILE_THEMES[0]
 }
+
+// ------------------------------------------------------------- Level & Badges --
+
+export async function awardGamificationXp(
+  profileId: number,
+  amount: number,
+  reason?: string
+): Promise<{ leveledUp: boolean; newLevel: number; newTitle: string }> {
+  const [profile] = await db
+    .select({ xp: profiles.xp, level: profiles.level })
+    .from(profiles)
+    .where(eq(profiles.id, profileId))
+    .limit(1)
+
+  if (!profile) return { leveledUp: false, newLevel: 1, newTitle: "Çaylak" }
+
+  const nextXp = Math.max(0, (profile.xp ?? 0) + amount)
+  const newLevel = getLevelFromXp(nextXp)
+  const leveledUp = newLevel > (profile.level ?? 1)
+  const newTier = getLevelTier(newLevel)
+
+  await db
+    .update(profiles)
+    .set({
+      xp: nextXp,
+      level: newLevel,
+    })
+    .where(eq(profiles.id, profileId))
+
+  if (leveledUp) {
+    await db.insert(notifications).values({
+      profileId,
+      type: "system",
+      message: `🎉 Tebrikler! Seviye atladın: Seviye ${newLevel} - ${newTier.title}`,
+    })
+
+    // Check level-based badges
+    if (newLevel >= 5) {
+      await tryAwardBadge(profileId, "seviye-5")
+    }
+    if (newLevel >= 6) {
+      await tryAwardBadge(profileId, "siber-ustat")
+    }
+  }
+
+  return { leveledUp, newLevel, newTitle: newTier.title }
+}
+
+export async function tryAwardBadge(profileId: number, badgeSlug: string) {
+  const [badge] = await db.select().from(badges).where(eq(badges.slug, badgeSlug)).limit(1)
+  if (!badge) return false
+
+  const inserted = await db
+    .insert(userBadges)
+    .values({ profileId, badgeId: badge.id })
+    .onConflictDoNothing()
+    .returning()
+
+  if (inserted.length > 0) {
+    await db.insert(notifications).values({
+      profileId,
+      type: "badge",
+      message: `🏆 Yeni rozet kazandın: "${badge.name}" (${badge.description})`,
+    })
+    return true
+  }
+  return false
+}
+
+export async function checkAndAwardUserGamification(profileId: number) {
+  const [profile] = await db.select().from(profiles).where(eq(profiles.id, profileId)).limit(1)
+  if (!profile) return
+
+  // Count user statistics
+  const [[topicCountRow], [commentCountRow], [solutionsCountRow]] = await Promise.all([
+    db.select({ count: sql<number>`count(*)::int` }).from(topics).where(eq(topics.authorProfileId, profileId)),
+    db.select({ count: sql<number>`count(*)::int` }).from(comments).where(eq(comments.authorProfileId, profileId)),
+    db.select({ count: sql<number>`count(*)::int` }).from(topics).where(eq(topics.acceptedCommentId, profileId)),
+  ])
+
+  const topicCount = topicCountRow?.count ?? 0
+  const commentCount = commentCountRow?.count ?? 0
+
+  if (topicCount >= 1) await tryAwardBadge(profileId, "ilk-konu")
+  if (commentCount >= 1) await tryAwardBadge(profileId, "ilk-yorum")
+  if (commentCount >= 50) await tryAwardBadge(profileId, "tartisma-ustasi")
+  if (profile.karma >= 100) await tryAwardBadge(profileId, "100-karma")
+}
+

@@ -54,12 +54,42 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 export async function requireProfile(): Promise<Profile> {
   const profile = await getCurrentProfile()
   if (!profile) throw new Error("Giriş yapmalısınız")
-  if (profile.isBanned) throw new Error("Hesabınız askıya alınmış")
+
+  // Check if temporary ban has expired
+  if (profile.isBanned) {
+    if (profile.bannedUntil && new Date(profile.bannedUntil) < new Date()) {
+      await db.update(profiles).set({ isBanned: false, bannedUntil: null }).where(eq(profiles.id, profile.id))
+      profile.isBanned = false
+      profile.bannedUntil = null
+    } else {
+      throw new Error("Hesabınız askıya alınmış")
+    }
+  }
+
+  // Check if temporary mute has expired
+  if (profile.isMuted && profile.mutedUntil && new Date(profile.mutedUntil) < new Date()) {
+    await db.update(profiles).set({ isMuted: false, mutedUntil: null }).where(eq(profiles.id, profile.id))
+    profile.isMuted = false
+    profile.mutedUntil = null
+  }
+
   return profile
 }
 
 export async function requireAdmin(): Promise<Profile> {
   const profile = await requireProfile()
-  if (!profile.isAdmin) throw new Error("Yetkiniz yok")
+  if (!profile.isAdmin && profile.role !== "superadmin" && profile.role !== "admin") {
+    throw new Error("Yetkiniz yok")
+  }
   return profile
 }
+
+export async function requirePermission(permission: import("@/lib/rbac").PermissionKey): Promise<Profile> {
+  const { hasPermission } = await import("@/lib/rbac")
+  const profile = await requireProfile()
+  if (!hasPermission(profile, permission)) {
+    throw new Error("Bu işlem için yetkiniz bulunmuyor.")
+  }
+  return profile
+}
+

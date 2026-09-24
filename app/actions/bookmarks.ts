@@ -78,6 +78,7 @@ export async function getUserBookmarks() {
       isDailyTopic: topics.isDailyTopic,
       isPoll: topics.isPoll,
       isLocked: topics.isLocked,
+      acceptedCommentId: topics.acceptedCommentId,
       createdAt: topics.createdAt,
       lastActivityAt: topics.lastActivityAt,
       authorProfileId: topics.authorProfileId,

@@ -2,14 +2,16 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { BarChart3, Bot, Users, ShieldAlert, Megaphone, KeyRound } from "lucide-react"
+import { BarChart3, Bot, Users, ShieldAlert, Megaphone, KeyRound, Bell, Mail } from "lucide-react"
 
 const LINKS = [
   { href: "/admin", label: "Genel Bakış", icon: BarChart3 },
-  { href: "/admin/ai", label: "AI Kontrol", icon: Bot },
-  { href: "/admin/api", label: "Yapay Zeka API", icon: KeyRound },
-  { href: "/admin/kullanicilar", label: "Kullanıcılar", icon: Users },
   { href: "/admin/moderasyon", label: "Moderasyon", icon: ShieldAlert },
+  { href: "/admin/kullanicilar", label: "Kullanıcılar & Roller", icon: Users },
+  { href: "/admin/duyurular", label: "Duyurular", icon: Bell },
+  { href: "/admin/bulten", label: "Bülten", icon: Mail },
+  { href: "/admin/ai", label: "AI Kontrol", icon: Bot },
+  { href: "/admin/api", label: "Model & API Test", icon: KeyRound },
   { href: "/admin/reklamlar", label: "Reklamlar", icon: Megaphone },
 ]
 

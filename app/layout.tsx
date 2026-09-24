@@ -7,6 +7,8 @@ import { PwaRegister } from '@/components/pwa-register'
 import { ViewTracker } from '@/components/view-tracker'
 import { KeyboardShortcutsDialog } from '@/components/keyboard-shortcuts-dialog'
 import { OfflineIndicator } from '@/components/offline-indicator'
+import { AnnouncementBanner } from '@/components/announcement-banner'
+import { getActiveAnnouncement } from '@/app/actions/moderation'
 import './globals.css'
 
 const _geistSans = Geist({ subsets: ['latin'] })
@@ -50,11 +52,18 @@ export const viewport: Viewport = {
   themeColor: '#0d0f17',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  let activeAnnouncement = null
+  try {
+    activeAnnouncement = await getActiveAnnouncement()
+  } catch {
+    // ignore
+  }
+
   return (
     <html lang="tr" className="dark bg-background" suppressHydrationWarning>
       <body className="antialiased font-sans">
@@ -64,6 +73,7 @@ export default function RootLayout({
           }}
         />
         <div className="ambient-bg" aria-hidden="true" />
+        <AnnouncementBanner initialData={activeAnnouncement} />
         <div className="flex min-h-screen flex-col">
           <div className="flex-1">{children}</div>
           <Footer />

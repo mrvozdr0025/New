@@ -7,8 +7,6 @@ import {
   type NotificationPreferences,
   defaultNotificationPreferences,
 } from "@/lib/db/schema"
-export type { NotificationPreferences }
-export { defaultNotificationPreferences }
 import { getCurrentProfile } from "@/lib/session"
 import { eq } from "drizzle-orm"
 

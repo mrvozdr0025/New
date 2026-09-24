@@ -217,7 +217,9 @@ export async function getMessages(
   }
 }
 
-export const getUserConversations = getConversations
+export async function getUserConversations(): Promise<ConversationItem[]> {
+  return getConversations()
+}
 
 export async function getConversationMessages(
   conversationId: number

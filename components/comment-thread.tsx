@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { CommentForm } from "@/components/comment-form"
 import { VoteButtons } from "@/components/vote-buttons"
 import { CommentReactions } from "@/components/comment-reactions"
+import { LevelBadge } from "@/components/level-badge"
 import { RichContent } from "@/components/rich-content"
 import { timeAgo } from "@/lib/format"
 import type { TopicComment } from "@/lib/queries"
@@ -127,11 +128,19 @@ function CommentItem({
   return (
     <div className={depth > 0 ? "border-l-2 border-border/60 pl-3 sm:pl-4" : ""}>
       {isAccepted && (
-        <div className="mb-1 inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
-          <CheckCircle2 className="size-3" /> En İyi Cevap
+        <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 shadow-xs">
+          <CheckCircle2 className="size-3.5 text-emerald-400" />
+          <span>En İyi Cevap &amp; Çözüm</span>
+          <span className="font-mono text-[10px] text-emerald-300 bg-emerald-500/20 px-1.5 rounded">+25 XP</span>
         </div>
       )}
-      <div className={`flex gap-2.5 ${isAccepted ? "rounded-lg border border-primary/40 bg-primary/5 p-2" : ""}`}>
+      <div
+        className={`flex gap-2.5 transition-all ${
+          isAccepted
+            ? "rounded-xl border border-emerald-500/50 bg-emerald-500/[0.06] p-3 ring-1 ring-emerald-500/20"
+            : ""
+        }`}
+      >
         <Link href={`/profil/${node.authorUsername}`} className="shrink-0 pt-0.5">
           <Avatar className="size-7">
             <AvatarImage src={node.authorAvatarUrl ?? undefined} alt="" />
@@ -153,7 +162,7 @@ function CommentItem({
                 <Award className="size-3 text-amber-400" />
               </span>
             )}
-            <span className="font-mono text-[10px]">svy {node.authorLevel}</span>
+            <LevelBadge level={node.authorLevel} size="xs" />
             <span aria-hidden="true">·</span>
             <time dateTime={new Date(node.createdAt).toISOString()}>{timeAgo(node.createdAt)}</time>
             {node.isFunny && <Laugh className="size-3 text-accent" aria-label="Komik yorum" />}
@@ -204,12 +213,15 @@ function CommentItem({
                 type="button"
                 onClick={toggleAccept}
                 disabled={acceptPending}
-                className={`inline-flex items-center gap-1 text-xs transition-colors ${
-                  isAccepted ? "text-primary" : "text-muted-foreground hover:text-primary"
+                className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors ${
+                  isAccepted
+                    ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25"
+                    : "border border-border/80 text-muted-foreground hover:border-emerald-500/40 hover:text-emerald-400 hover:bg-emerald-500/10"
                 }`}
+                title={isAccepted ? "En iyi cevap işaretini kaldır" : "Bu cevabı en iyi çözüm olarak işaretle (+25 XP)"}
               >
-                <CheckCircle2 className="size-3.5" />
-                {isAccepted ? "En İyi Cevabı Kaldır" : "En İyi Cevap Seç"}
+                <CheckCircle2 className={`size-3.5 ${isAccepted ? "text-emerald-400" : ""}`} />
+                {isAccepted ? "Çözümü Kaldır" : "En İyi Cevap Seç"}
               </button>
             )}
           </div>
