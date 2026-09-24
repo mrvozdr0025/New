@@ -7,6 +7,8 @@ import { getPopularTags, getTagBySlug, getTopicsByTag } from "@/lib/queries"
 import { getCurrentProfile } from "@/lib/session"
 import { Tag } from "lucide-react"
 
+import { generateBreadcrumbJsonLd, getBaseUrl } from "@/lib/seo"
+
 export async function generateMetadata({
   params,
 }: {
@@ -15,9 +17,28 @@ export async function generateMetadata({
   const { slug } = await params
   const tag = await getTagBySlug(slug)
   if (!tag) return { title: "Etiket bulunamadı" }
+
+  const base = getBaseUrl()
+  const canonicalUrl = `${base}/etiket/${tag.slug}`
+  const description = `#${tag.name} etiketiyle paylaşılan en güncel forum tartışmaları, rehberler ve topluluk içerikleri.`
+
   return {
-    title: `#${tag.name} konuları`,
-    description: `#${tag.name} etiketli tüm forum konuları.`,
+    title: `#${tag.name} Konuları ve Tartışmaları — neonsform`,
+    description,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title: `#${tag.name} Konuları — neonsform`,
+      description,
+      type: "website",
+      url: canonicalUrl,
+    },
+    twitter: {
+      card: "summary",
+      title: `#${tag.name} Konuları — neonsform`,
+      description,
+    },
   }
 }
 
@@ -36,9 +57,18 @@ export default async function TagPage({
     getCurrentProfile(),
   ])
 
+  const breadcrumbJsonLd = generateBreadcrumbJsonLd([
+    { name: "Ana Sayfa", url: "/" },
+    { name: `#${tag.name}`, url: `/etiket/${tag.slug}` },
+  ])
+
   return (
     <>
       <Navbar />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
         <header className="glass mb-5 rounded-xl border border-border p-5">
           <div className="flex items-center gap-2">

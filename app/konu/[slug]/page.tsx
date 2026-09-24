@@ -31,6 +31,13 @@ import {
 import { getCurrentProfile } from "@/lib/session"
 import { Bot, CheckCircle2, Eye, Flame, Lock, MessageSquare, Pin } from "lucide-react"
 
+import {
+  cleanTextForMeta,
+  generateBreadcrumbJsonLd,
+  generateTopicDiscussionJsonLd,
+  getBaseUrl,
+} from "@/lib/seo"
+
 export async function generateMetadata({
   params,
 }: {
@@ -39,23 +46,34 @@ export async function generateMetadata({
   const { slug } = await params
   const topic = await getTopicBySlug(slug)
   if (!topic) return { title: "Konu bulunamadı" }
-  const description = topic.content.slice(0, 180)
+
+  const cleanDesc = cleanTextForMeta(topic.content, 155)
+  const base = getBaseUrl()
+  const canonicalUrl = `${base}/konu/${topic.slug}`
+
   return {
-    title: `${topic.title} | neonsform`,
-    description,
+    title: `${topic.title} — neonsform`,
+    description: cleanDesc,
+    alternates: {
+      canonical: canonicalUrl,
+    },
     openGraph: {
-      title: topic.title,
-      description,
+      title: `${topic.title} — neonsform`,
+      description: cleanDesc,
       type: "article",
-      url: `/konu/${topic.slug}`,
+      url: canonicalUrl,
       siteName: "neonsform",
       publishedTime: new Date(topic.createdAt).toISOString(),
+      modifiedTime: new Date(topic.lastActivityAt).toISOString(),
       authors: [topic.authorDisplayName],
+      section: topic.categoryName,
     },
     twitter: {
       card: "summary_large_image",
       title: topic.title,
-      description,
+      description: cleanDesc,
+      creator: `@${topic.authorUsername}`,
+      site: "@neonsform",
     },
   }
 }
@@ -103,20 +121,26 @@ export default async function TopicPage({
     profile && (profile.id === topic.authorProfileId || profile.isAdmin),
   )
 
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "DiscussionForumPosting",
-    headline: topic.title,
-    text: topic.content.slice(0, 500),
-    author: { "@type": "Person", name: topic.authorDisplayName },
-    datePublished: new Date(topic.createdAt).toISOString(),
+  const forumPostingJsonLd = generateTopicDiscussionJsonLd({
+    title: topic.title,
+    content: topic.content,
+    slug: topic.slug,
+    createdAt: topic.createdAt,
+    lastActivityAt: topic.lastActivityAt,
+    authorName: topic.authorDisplayName,
+    authorUsername: topic.authorUsername,
+    authorIsAI: topic.authorIsAI,
     commentCount: topic.commentCount,
-    interactionStatistic: {
-      "@type": "InteractionCounter",
-      interactionType: "https://schema.org/LikeAction",
-      userInteractionCount: topic.score,
-    },
-  }
+    score: topic.score,
+    categoryName: topic.categoryName,
+    categorySlug: topic.categorySlug,
+  })
+
+  const breadcrumbJsonLd = generateBreadcrumbJsonLd([
+    { name: "Ana Sayfa", url: "/" },
+    { name: topic.categoryName, url: `/kategori/${topic.categorySlug}` },
+    { name: topic.title, url: `/konu/${topic.slug}` },
+  ])
 
   return (
     <>
@@ -124,7 +148,11 @@ export default async function TopicPage({
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(forumPostingJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       <LiveTopicUpdates
         topicId={topic.id}

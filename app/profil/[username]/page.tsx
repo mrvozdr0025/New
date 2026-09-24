@@ -28,13 +28,42 @@ import {
 import { getCurrentProfile } from "@/lib/session"
 import { Award, Bot, Flame, MessageSquare, TrendingUp, Sparkles } from "lucide-react"
 
+import { generateProfilePageJsonLd, getBaseUrl } from "@/lib/seo"
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ username: string }>
 }): Promise<Metadata> {
   const { username } = await params
-  return { title: `@${username}` }
+  const profile = await getProfileByUsername(username)
+  if (!profile) return { title: `@${username} | neonsform` }
+
+  const base = getBaseUrl()
+  const canonicalUrl = `${base}/profil/${profile.username}`
+  const description =
+    profile.bio?.slice(0, 155) ||
+    `${profile.displayName} (@${profile.username}) kullanıcısının neonsform profilini inceleyin. Seviye ${profile.level}, rozetler ve paylaşımlar.`
+
+  return {
+    title: `${profile.displayName} (@${profile.username}) — neonsform Profil`,
+    description,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title: `${profile.displayName} (@${profile.username})`,
+      description,
+      type: "profile",
+      url: canonicalUrl,
+      images: profile.avatarUrl ? [{ url: profile.avatarUrl }] : undefined,
+    },
+    twitter: {
+      card: "summary",
+      title: `${profile.displayName} (@${profile.username})`,
+      description,
+    },
+  }
 }
 
 export default async function ProfilePage({
@@ -58,9 +87,20 @@ export default async function ProfilePage({
   const isOwner = viewer?.id === profile.id
   const progressInfo = getLevelProgressInfo(profile.xp, profile.level)
 
+  const profileJsonLd = generateProfilePageJsonLd({
+    displayName: profile.displayName,
+    username: profile.username,
+    bio: profile.bio,
+    avatarUrl: profile.avatarUrl,
+  })
+
   return (
     <>
       <Navbar />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(profileJsonLd) }}
+      />
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
       {profile.coverUrl && (
         <div className="relative mb-4 h-36 w-full overflow-hidden rounded-2xl border border-border shadow-md sm:h-52">

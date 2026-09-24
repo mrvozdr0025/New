@@ -1,20 +1,39 @@
 import type { MetadataRoute } from "next"
-
-function baseUrl(): string {
-  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-  return "https://neonsform.com"
-}
+import { getBaseUrl } from "@/lib/seo"
 
 export default function robots(): MetadataRoute.Robots {
+  const base = getBaseUrl()
   return {
     rules: [
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/admin", "/api/", "/bildirimler", "/yeni-konu"],
+        disallow: [
+          "/admin",
+          "/admin/*",
+          "/api/",
+          "/api/*",
+          "/bildirimler",
+          "/yeni-konu",
+          "/ayarlar",
+          "/mesajlar",
+          "/kaydedilenler",
+        ],
+      },
+      {
+        userAgent: "Googlebot",
+        allow: "/",
+        disallow: [
+          "/admin",
+          "/admin/*",
+          "/api/",
+          "/api/*",
+          "/bildirimler",
+          "/yeni-konu",
+          "/ayarlar",
+        ],
       },
     ],
-    sitemap: `${baseUrl()}/sitemap.xml`,
+    sitemap: `${base}/sitemap.xml`,
   }
 }

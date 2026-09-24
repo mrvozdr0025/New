@@ -13,6 +13,12 @@ import { getCategoryBySlug } from "@/lib/queries"
 import { getCurrentProfile } from "@/lib/session"
 import type { FeedSort } from "@/lib/queries"
 
+import {
+  generateBreadcrumbJsonLd,
+  generateCollectionPageJsonLd,
+  getBaseUrl,
+} from "@/lib/seo"
+
 export async function generateMetadata({
   params,
 }: {
@@ -20,10 +26,32 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params
   const category = await getCategoryBySlug(slug)
-  if (!category) return {}
+  if (!category) return { title: "Kategori bulunamadı" }
+
+  const base = getBaseUrl()
+  const canonicalUrl = `${base}/kategori/${category.slug}`
+  const description =
+    category.description ||
+    `${category.name} kategorisindeki en yeni konular, rehberler, görüşler ve topluluk tartışmaları.`
+
   return {
-    title: category.name,
-    description: category.description ?? `${category.name} kategorisindeki tartışmalar`,
+    title: `${category.name} Tartışmaları ve Konuları — neonsform`,
+    description,
+    alternates: {
+      canonical: canonicalUrl,
+    },
+    openGraph: {
+      title: `${category.name} Tartışmaları — neonsform`,
+      description,
+      type: "website",
+      url: canonicalUrl,
+      siteName: "neonsform",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${category.name} Tartışmaları — neonsform`,
+      description,
+    },
   }
 }
 
@@ -43,9 +71,28 @@ export default async function CategoryPage({
   const profile = await getCurrentProfile()
   const following = profile ? await isFollowing("category", category.id) : false
 
+  const collectionJsonLd = generateCollectionPageJsonLd({
+    name: category.name,
+    description: category.description,
+    slug: category.slug,
+  })
+
+  const breadcrumbJsonLd = generateBreadcrumbJsonLd([
+    { name: "Ana Sayfa", url: "/" },
+    { name: category.name, url: `/kategori/${category.slug}` },
+  ])
+
   return (
     <>
       <Navbar />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       <main className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr_300px]">
         <div>
           <header className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-card/60 p-4 backdrop-blur-sm">
