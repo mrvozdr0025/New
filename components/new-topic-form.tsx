@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { createTopic } from "@/app/actions/forum"
+import { createTopic, suggestTagsWithAI } from "@/app/actions/forum"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select"
 import { RichMarkdownEditor } from "@/components/rich-markdown-editor"
 import { useDraft } from "@/hooks/use-draft"
-import { BarChart3, Loader2, Plus, X } from "lucide-react"
+import { BarChart3, Loader2, Plus, Sparkles, X } from "lucide-react"
 
 export function NewTopicForm({ categories }: { categories: { id: number; name: string }[] }) {
   const [pending, startTransition] = useTransition()
@@ -22,8 +22,33 @@ export function NewTopicForm({ categories }: { categories: { id: number; name: s
   const [categoryId, setCategoryId] = useState<string>("")
   const [showPoll, setShowPoll] = useState(false)
   const [pollOptionCount, setPollOptionCount] = useState(2)
+  const [tagsValue, setTagsValue] = useState("")
+  const [aiTagLoading, setAiTagLoading] = useState(false)
+  const [aiTagNote, setAiTagNote] = useState<string | null>(null)
   const titleDraft = useDraft("new-topic:title")
   const contentDraft = useDraft("new-topic:content")
+
+  async function handleSuggestTags() {
+    if (!titleDraft.value.trim() || titleDraft.value.trim().length < 4) {
+      setAiTagNote("Etiket önermek için en az 4 karakterlik bir başlık yazmalısın.")
+      return
+    }
+    setAiTagLoading(true)
+    setAiTagNote(null)
+    try {
+      const suggested = await suggestTagsWithAI(titleDraft.value, contentDraft.value, categoryId)
+      if (suggested && suggested.length > 0) {
+        setTagsValue(suggested.join(", "))
+        setAiTagNote(`Yapay zeka ${suggested.length} etiket önerdi!`)
+      } else {
+        setAiTagNote("Uygun etiket bulunamadı.")
+      }
+    } catch (e) {
+      setAiTagNote(e instanceof Error ? e.message : "Etiketler üretilemedi")
+    } finally {
+      setAiTagLoading(false)
+    }
+  }
 
   const draftRestored =
     (titleDraft.restored && titleDraft.value.trim()) ||
@@ -118,10 +143,37 @@ export function NewTopicForm({ categories }: { categories: { id: number; name: s
       )}
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="tags">
-          Etiketler <span className="font-normal text-muted-foreground">(isteğe bağlı, virgülle ayır, en fazla 5)</span>
-        </Label>
-        <Input id="tags" name="tags" maxLength={200} placeholder="örn: zam, market, ekonomi" />
+        <div className="flex items-center justify-between">
+          <Label htmlFor="tags">
+            Etiketler <span className="font-normal text-muted-foreground">(isteğe bağlı, virgülle ayır, en fazla 5)</span>
+          </Label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleSuggestTags}
+            disabled={aiTagLoading}
+            className="h-7 gap-1 px-2 text-xs font-medium text-primary hover:bg-primary/10 hover:text-primary transition-colors"
+          >
+            {aiTagLoading ? (
+              <Loader2 className="size-3 animate-spin text-primary" />
+            ) : (
+              <Sparkles className="size-3 text-cyan-500" />
+            )}
+            <span>AI ile Etiket Öner</span>
+          </Button>
+        </div>
+        <Input
+          id="tags"
+          name="tags"
+          maxLength={200}
+          value={tagsValue}
+          onChange={(e) => setTagsValue(e.target.value)}
+          placeholder="örn: zam, market, ekonomi"
+        />
+        {aiTagNote && (
+          <p className="text-xs text-primary font-medium">{aiTagNote}</p>
+        )}
       </div>
 
       {!showPoll ? (

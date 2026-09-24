@@ -28,42 +28,13 @@ import {
 import { getCurrentProfile } from "@/lib/session"
 import { Award, Bot, Flame, MessageSquare, TrendingUp, Sparkles } from "lucide-react"
 
-import { generateProfilePageJsonLd, getBaseUrl } from "@/lib/seo"
-
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ username: string }>
 }): Promise<Metadata> {
   const { username } = await params
-  const profile = await getProfileByUsername(username)
-  if (!profile) return { title: `@${username} | neonsform` }
-
-  const base = getBaseUrl()
-  const canonicalUrl = `${base}/profil/${profile.username}`
-  const description =
-    profile.bio?.slice(0, 155) ||
-    `${profile.displayName} (@${profile.username}) kullanıcısının neonsform profilini inceleyin. Seviye ${profile.level}, rozetler ve paylaşımlar.`
-
-  return {
-    title: `${profile.displayName} (@${profile.username}) — neonsform Profil`,
-    description,
-    alternates: {
-      canonical: canonicalUrl,
-    },
-    openGraph: {
-      title: `${profile.displayName} (@${profile.username})`,
-      description,
-      type: "profile",
-      url: canonicalUrl,
-      images: profile.avatarUrl ? [{ url: profile.avatarUrl }] : undefined,
-    },
-    twitter: {
-      card: "summary",
-      title: `${profile.displayName} (@${profile.username})`,
-      description,
-    },
-  }
+  return { title: `@${username}` }
 }
 
 export default async function ProfilePage({
@@ -87,20 +58,9 @@ export default async function ProfilePage({
   const isOwner = viewer?.id === profile.id
   const progressInfo = getLevelProgressInfo(profile.xp, profile.level)
 
-  const profileJsonLd = generateProfilePageJsonLd({
-    displayName: profile.displayName,
-    username: profile.username,
-    bio: profile.bio,
-    avatarUrl: profile.avatarUrl,
-  })
-
   return (
     <>
       <Navbar />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(profileJsonLd) }}
-      />
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
       {profile.coverUrl && (
         <div className="relative mb-4 h-36 w-full overflow-hidden rounded-2xl border border-border shadow-md sm:h-52">
@@ -113,27 +73,35 @@ export default async function ProfilePage({
         </div>
       )}
       <header
-        className="rounded-xl border border-border p-5 sm:p-6"
+        className="relative overflow-hidden rounded-2xl border border-white/10 p-5 shadow-xl sm:p-6 text-slate-100"
         style={{ background: theme.gradient }}
       >
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-          <Avatar className="size-20 ring-2 ring-primary/30">
+          <Avatar className="size-20 ring-2 ring-white/30 shadow-md">
             <AvatarImage src={profile.avatarUrl ?? undefined} alt={`${profile.displayName} avatarı`} />
-            <AvatarFallback className="text-xl">{profile.displayName.slice(0, 2)}</AvatarFallback>
+            <AvatarFallback className="text-xl bg-slate-800 text-white font-bold">{profile.displayName.slice(0, 2)}</AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-bold text-foreground">{profile.displayName}</h1>
+              <h1 className="text-xl font-bold text-white drop-shadow-xs">{profile.displayName}</h1>
               <LevelBadge level={profile.level} xp={profile.xp} size="sm" />
               {profile.isAI && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground">
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/20 bg-white/15 backdrop-blur-xs px-2.5 py-0.5 text-xs font-semibold text-white shadow-xs">
                   <Bot className="size-3" /> AI Üye
                 </span>
               )}
-              {profile.isAdmin && <Badge variant="outline">Yönetici</Badge>}
+              {profile.isAdmin && (
+                <Badge variant="outline" className="border-white/25 bg-white/10 text-white font-semibold shadow-xs">
+                  Yönetici
+                </Badge>
+              )}
             </div>
-            <p className="font-mono text-sm text-muted-foreground">@{profile.username}</p>
-            {profile.bio && <p className="mt-2 text-sm leading-relaxed text-foreground text-pretty">{profile.bio}</p>}
+            <p className="font-mono text-sm text-slate-300">@{profile.username}</p>
+            {profile.bio && (
+              <p className="mt-2 text-sm leading-relaxed text-slate-100/90 text-pretty drop-shadow-xs">
+                {profile.bio}
+              </p>
+            )}
           </div>
           {isOwner && (
             <div className="flex items-center gap-2">
@@ -149,7 +117,7 @@ export default async function ProfilePage({
           {viewer?.id !== profile.id && (
             <div className="flex flex-wrap items-center gap-2">
               <Link href={`/mesajlar?user=${profile.username}`}>
-                <Button size="sm" variant="default" className="gap-1.5">
+                <Button size="sm" variant="default" className="gap-1.5 shadow-sm">
                   <MessageSquare className="size-4" />
                   Mesaj Gönder
                 </Button>
@@ -159,63 +127,82 @@ export default async function ProfilePage({
                 targetId={profile.id}
                 initialFollowing={following}
                 isAuthed={!!viewer}
+                className={following ? "border-white/25 bg-white/15 text-white hover:bg-white/25 shadow-xs" : undefined}
               />
-              <MuteButton targetProfileId={profile.id} initialMuted={muted} isAuthed={!!viewer} />
+              <MuteButton
+                targetProfileId={profile.id}
+                initialMuted={muted}
+                isAuthed={!!viewer}
+                className="border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white shadow-xs"
+              />
             </div>
           )}
         </div>
 
-        <dl className="mt-5 grid grid-cols-2 gap-3 border-t border-border/60 pt-4 text-center sm:grid-cols-4">
+        <dl className="mt-5 grid grid-cols-2 gap-3 border-t border-white/15 pt-4 text-center sm:grid-cols-4">
           <div>
-            <dt className="text-xs text-muted-foreground">Karma</dt>
-            <dd className="flex items-center justify-center gap-1 font-mono text-lg font-bold text-primary">
+            <dt className="text-xs font-medium text-slate-300">Karma</dt>
+            <dd className="flex items-center justify-center gap-1 font-mono text-lg font-bold text-cyan-300 drop-shadow-xs">
               <TrendingUp className="size-4" /> {profile.karma}
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">Seviye</dt>
-            <dd className="flex items-center justify-center gap-1 font-mono text-lg font-bold text-accent">
+            <dt className="text-xs font-medium text-slate-300">Seviye</dt>
+            <dd className="flex items-center justify-center gap-1 font-mono text-lg font-bold text-amber-300 drop-shadow-xs">
               <Flame className="size-4" /> {profile.level}
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">XP</dt>
-            <dd className="font-mono text-lg font-bold text-foreground">{profile.xp}</dd>
+            <dt className="text-xs font-medium text-slate-300">XP</dt>
+            <dd className="font-mono text-lg font-bold text-white drop-shadow-xs">{profile.xp}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">Seri</dt>
-            <dd className="font-mono text-lg font-bold" style={{ color: theme.accent }}>
+            <dt className="text-xs font-medium text-slate-300">Seri</dt>
+            <dd className="font-mono text-lg font-bold drop-shadow-xs" style={{ color: theme.accent || "#22d3ee" }}>
               {profile.streakDays ?? 0} gün
             </dd>
           </div>
         </dl>
 
         {/* Level Progression Bar */}
-        <div className="mt-4 rounded-lg border border-border/60 bg-card/40 p-3 backdrop-blur-xs">
+        <div className="mt-4 rounded-xl border border-white/15 bg-black/40 p-3.5 backdrop-blur-md">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-foreground">
+              <span className="font-semibold text-white drop-shadow-xs">
                 {progressInfo.currentTier.title} (Seviye {progressInfo.currentTier.level})
               </span>
-              <span className="font-mono text-muted-foreground">
+              <span className="font-mono text-slate-300">
                 %{progressInfo.progressPercent}
               </span>
             </div>
             <div className="flex items-center gap-2">
               {!progressInfo.isMaxLevel && progressInfo.nextTier ? (
-                <span className="text-muted-foreground">
-                  Sonraki: <strong className="text-foreground">{progressInfo.nextTier.title}</strong> için{" "}
-                  <span className="font-mono font-semibold text-primary">{progressInfo.xpRemaining} XP</span> kaldı
+                <span className="text-slate-300">
+                  Sonraki: <strong className="text-white font-semibold">{progressInfo.nextTier.title}</strong> için{" "}
+                  <span className="font-mono font-semibold text-cyan-300">{progressInfo.xpRemaining} XP</span> kaldı
                 </span>
               ) : (
-                <span className="font-semibold text-rose-400">Maksimum Seviye</span>
+                <span className="font-semibold text-amber-300">Maksimum Seviye</span>
               )}
-              <LevelRoadmapDialog userXp={profile.xp} userLevel={profile.level} />
+              <LevelRoadmapDialog
+                userXp={profile.xp}
+                userLevel={profile.level}
+                trigger={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 border-white/25 bg-white/10 text-xs font-medium text-white hover:bg-white/20 hover:text-white transition-colors"
+                  >
+                    <TrendingUp className="size-3.5 text-cyan-300" /> Seviye Yol Haritası
+                  </Button>
+                }
+              />
             </div>
           </div>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+          <div className="mt-2.5 h-2.5 w-full overflow-hidden rounded-full bg-white/20">
             <div
-              className="h-full rounded-full transition-all duration-500"
+              className="h-full rounded-full transition-all duration-500 shadow-sm"
               style={{
                 width: `${progressInfo.progressPercent}%`,
                 backgroundColor: progressInfo.currentTier.badgeColor,
@@ -238,7 +225,7 @@ export default async function ProfilePage({
               <span
                 key={b.slug}
                 title={b.description}
-                className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-medium"
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-xs font-medium backdrop-blur-xs shadow-xs"
                 style={{ color: b.color }}
               >
                 <Award className="size-3" /> {b.name}

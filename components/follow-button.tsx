@@ -13,6 +13,7 @@ export function FollowButton({
   isAuthed,
   label = "Takip Et",
   unfollowLabel = "Takibi Bırak",
+  className,
 }: {
   targetType: "user" | "category"
   targetId: number
@@ -20,6 +21,7 @@ export function FollowButton({
   isAuthed: boolean
   label?: string
   unfollowLabel?: string
+  className?: string
 }) {
   const router = useRouter()
   const [following, setFollowing] = useState(initialFollowing)
@@ -47,6 +49,7 @@ export function FollowButton({
       onClick={onClick}
       disabled={pending}
       aria-pressed={following}
+      className={className}
     >
       {pending ? (
         <Loader2 className="size-4 animate-spin" />

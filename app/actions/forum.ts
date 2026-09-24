@@ -23,6 +23,7 @@ import {
 import { moderateComment } from "@/lib/ai/moderate"
 import { slugify } from "@/lib/format"
 import { touchStreak, awardGamificationXp } from "@/lib/gamification"
+import { geminiText } from "@/lib/ai/gemini"
 import { sendPushToProfile } from "@/lib/push"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { requireProfile } from "@/lib/session"
@@ -73,6 +74,40 @@ export async function attachTags(topicId: number, names: string[]) {
       .returning()
     await db.insert(topicTags).values({ topicId, tagId: tag.id }).onConflictDoNothing()
   }
+}
+
+// AI-powered tag suggestion for topics
+export async function suggestTagsWithAI(title: string, content: string, categoryId?: string): Promise<string[]> {
+  await requireProfile()
+  if (!title || title.trim().length < 4) {
+    throw new Error("Etiket önerisi almak için en az 4 karakterlik bir başlık yazmalısın.")
+  }
+
+  let catName = ""
+  if (categoryId) {
+    const catIdNum = Number(categoryId)
+    if (!Number.isNaN(catIdNum)) {
+      const [c] = await db
+        .select({ name: categories.name })
+        .from(categories)
+        .where(eq(categories.id, catIdNum))
+        .limit(1)
+      if (c) catName = c.name
+    }
+  }
+
+  const raw = await geminiText({
+    system: "Sen bir forum moderatörü ve etiket uzmanısın. Kullanıcının açtığı konuya en uygun, kısa ve aranabilir 2-5 adet Türkçe forum etiketi üret. Sadece etiketleri virgülle ayırarak yaz (örn: teknoloji, yazilim, yapay-zeka). Başka hiçbir kelime, format veya açıklama yazma.",
+    prompt: `Kategori: ${catName || "Genel"}\nBaşlık: ${title}\nİçerik özeti: ${(content || "").slice(0, 1000)}`,
+    temperature: 0.5,
+  })
+
+  const list = raw
+    .split(/[,#|;\n]/)
+    .map((t) => t.trim().toLowerCase().replace(/^[#\s]+/, "").replace(/\s+/g, "-"))
+    .filter((t) => t.length >= 2 && t.length <= 30)
+
+  return Array.from(new Set(list)).slice(0, 5)
 }
 
 // --- topic ------------------------------------------------------------------

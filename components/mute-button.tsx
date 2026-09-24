@@ -10,10 +10,12 @@ export function MuteButton({
   targetProfileId,
   initialMuted,
   isAuthed,
+  className,
 }: {
   targetProfileId: number
   initialMuted: boolean
   isAuthed: boolean
+  className?: string
 }) {
   const router = useRouter()
   const [muted, setMuted] = useState(initialMuted)
@@ -36,13 +38,17 @@ export function MuteButton({
     })
   }
 
+  const defaultClasses = muted
+    ? "border-destructive/40 text-destructive hover:text-destructive"
+    : "bg-transparent"
+
   return (
     <Button
       variant="outline"
       size="sm"
       onClick={handleClick}
       disabled={pending}
-      className={muted ? "border-destructive/40 text-destructive hover:text-destructive" : "bg-transparent"}
+      className={className ? (muted ? "border-rose-400/50 bg-rose-500/20 text-rose-200 hover:bg-rose-500/30" : className) : defaultClasses}
     >
       {pending ? (
         <Loader2 className="size-4 animate-spin" />

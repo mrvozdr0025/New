@@ -12,13 +12,76 @@ import {
   pollOptions,
   pollVotes,
   profiles,
+  tags,
   topics,
+  topicTags,
   votes,
 } from "@/lib/db/schema"
 import { geminiText } from "@/lib/ai/gemini"
 import { humanize, randomLengthInstruction } from "@/lib/ai/humanize"
 import { slugify } from "@/lib/format"
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm"
+
+// Helper to upsert tags by slug and attach them to a topic
+async function attachTopicTags(topicId: number, names: string[]) {
+  for (const name of names) {
+    const cleanName = name.trim().replace(/^[#\s]+/, "")
+    const tagSlug = slugify(cleanName)
+    if (!tagSlug) continue
+    try {
+      const [tag] = await db
+        .insert(tags)
+        .values({ name: cleanName, slug: tagSlug })
+        .onConflictDoUpdate({ target: tags.slug, set: { name: cleanName } })
+        .returning()
+      if (tag) {
+        await db.insert(topicTags).values({ topicId, tagId: tag.id }).onConflictDoNothing()
+      }
+    } catch {
+      // Non-fatal if conflict or race condition
+    }
+  }
+}
+
+// Extracts tags from AI response or generates contextual fallback tags
+function extractTags(raw: string, category: { name: string; slug: string }, title: string): string[] {
+  const tagMatch = raw.match(/ETİKETLER:\s*(.+)/i)
+  let list: string[] = []
+  if (tagMatch) {
+    list = tagMatch[1]
+      .split(/[,#|;]/)
+      .map((t) => t.trim().toLowerCase().replace(/^[#\s]+/, ""))
+      .filter((t) => t.length >= 2 && t.length <= 30)
+  }
+
+  // If AI provided fewer than 2 tags, supplement from title keywords and category
+  if (list.length < 2) {
+    if (!list.includes(category.slug)) {
+      list.push(category.slug)
+    }
+    const stopWords = new Set([
+      "bir", "bu", "ve", "ile", "icin", "için", "ne", "neler", "nasil", "nasıl",
+      "mi", "mu", "mı", "mü", "dün", "bugün", "hakkinda", "hakkında", "oldu",
+      "yeni", "gore", "göre", "kadar", "daha", "cok", "çok", "en", "olan",
+      "diye", "gibi", "kendi", "bence", "sizce", "neden", "hangisi", "nedir"
+    ])
+    const words = title
+      .toLowerCase()
+      .replace(/[^a-z0-9çğıöşü\s]/gi, " ")
+      .split(/\s+/)
+      .filter((w) => w.length >= 3 && !stopWords.has(w))
+
+    for (const w of words) {
+      if (list.length >= 4) break
+      const s = slugify(w)
+      if (s && !list.includes(s) && !list.includes(w)) {
+        list.push(w)
+      }
+    }
+  }
+
+  return Array.from(new Set(list)).slice(0, 4)
+}
 
 type PersonaRow = {
   personaId: number
@@ -119,13 +182,13 @@ export async function aiCreateTopic(opts?: { isDailyTopic?: boolean }) {
         ? `"${category.name}" kategorisinde bugünün tartışma konusunu aç. Herkesin fikir belirtebileceği, tartışma yaratacak bir soru sor.`
         : `"${category.name}" kategorisinde yeni bir forum konusu aç. Kişisel bir deneyim, güçlü bir görüş veya merak uyandıran bir soru olsun.`,
       `Şu başlıklar YAKIN ZAMANDA açıldı, BENZERİNİ AÇMA: ${recent.map((r) => r.title).join(" | ") || "(yok)"}`,
-      'Çıktı formatı TAM OLARAK şöyle olsun (başka hiçbir şey yazma):\nBAŞLIK: <10-120 karakter arası başlık>\nİÇERİK: <2-5 cümlelik içerik>',
+      'Çıktı formatı TAM OLARAK şöyle olsun (başka hiçbir şey yazma):\nBAŞLIK: <10-120 karakter arası başlık>\nİÇERİK: <2-5 cümlelik içerik>\nETİKETLER: <konu ve kategoriyle doğrudan ilişkili 2-4 adet etiket, virgülle ayrılmış, örn: teknoloji, yazilim, yapay-zeka>',
     ].join("\n"),
     temperature: 1.1,
   })
 
   const titleMatch = raw.match(/BAŞLIK:\s*(.+)/)
-  const contentMatch = raw.match(/İÇERİK:\s*([\s\S]+)/)
+  const contentMatch = raw.match(/İÇERİK:\s*([\s\S]+?)(?=\nETİKETLER:|$)/i)
   if (!titleMatch || !contentMatch) return null
 
   const title = humanize(titleMatch[1].trim(), { typoRate: persona.typoRate * 0.5 }).slice(0, 200)
@@ -148,6 +211,12 @@ export async function aiCreateTopic(opts?: { isDailyTopic?: boolean }) {
       isDailyTopic: opts?.isDailyTopic ?? false,
     })
     .returning()
+
+  // Generate and attach relevant tags to the AI topic
+  const tagsToAttach = extractTags(raw, category, title)
+  if (tagsToAttach.length > 0) {
+    await attachTopicTags(topic.id, tagsToAttach)
+  }
 
   await db
     .update(categories)
@@ -185,14 +254,14 @@ export async function aiCreateTrendTopic() {
       `Bugün ${today}. Google'da arama yaparak Türkiye gündeminden "${category.name}" alanıyla ilgili BUGÜNE AİT güncel bir haber, gelişme veya sonuç bul (örn: maç sonucu, teknoloji duyurusu, ekonomi haberi, gündem olayı).`,
       "Bulduğun güncel gelişme hakkında forumda konu aç. Habermiş gibi kuru anlatma; kendi görüşünü kat, tartışma yarat. Kaynak linki veya kaynak adı YAZMA.",
       `Şu başlıklar zaten var, BENZERİNİ AÇMA: ${recent.map((r) => r.title).join(" | ") || "(yok)"}`,
-      'Çıktı formatı TAM OLARAK şöyle olsun (başka hiçbir şey yazma):\nBAŞLIK: <10-120 karakter arası başlık>\nİÇERİK: <2-5 cümlelik içerik>',
+      'Çıktı formatı TAM OLARAK şöyle olsun (başka hiçbir şey yazma):\nBAŞLIK: <10-120 karakter arası başlık>\nİÇERİK: <2-5 cümlelik içerik>\nETİKETLER: <haber konusuyla ve gündemle doğrudan ilişkili 2-4 adet etiket, virgülle ayrılmış, örn: ekonomi, enflasyon, piyasa>',
     ].join("\n\n"),
     temperature: 1.0,
     useSearch: true,
   })
 
   const titleMatch = raw.match(/BAŞLIK:\s*(.+)/)
-  const contentMatch = raw.match(/İÇERİK:\s*([\s\S]+)/)
+  const contentMatch = raw.match(/İÇERİK:\s*([\s\S]+?)(?=\nETİKETLER:|$)/i)
   if (!titleMatch || !contentMatch) return null
 
   const title = humanize(titleMatch[1].trim(), { typoRate: persona.typoRate * 0.5 }).slice(0, 200)
@@ -214,6 +283,12 @@ export async function aiCreateTrendTopic() {
       isAISuggested: true,
     })
     .returning()
+
+  // Generate and attach relevant tags to the trend topic
+  const tagsToAttach = extractTags(raw, category, title)
+  if (tagsToAttach.length > 0) {
+    await attachTopicTags(topic.id, tagsToAttach)
+  }
 
   await db
     .update(categories)
@@ -248,7 +323,7 @@ export async function aiCreatePollTopic() {
     prompt: [
       `"${category.name}" kategorisinde ANKETLİ bir forum konusu aç. Herkesin oy vermek isteyeceği, tartışma yaratacak eğlenceli veya ateşli bir soru olsun.`,
       `Şu başlıklar yakın zamanda açıldı, BENZERİNİ AÇMA: ${recent.map((r) => r.title).join(" | ") || "(yok)"}`,
-      'Çıktı formatı TAM OLARAK şöyle olsun (başka hiçbir şey yazma):\nBAŞLIK: <10-120 karakter arası başlık>\nİÇERİK: <1-3 cümlelik içerik, insanları oy vermeye çağır>\nSORU: <anket sorusu>\nSEÇENEK: <seçenek 1>\nSEÇENEK: <seçenek 2>\nSEÇENEK: <seçenek 3 (isteğe bağlı)>\nSEÇENEK: <seçenek 4 (isteğe bağlı)>',
+      'Çıktı formatı TAM OLARAK şöyle olsun (başka hiçbir şey yazma):\nBAŞLIK: <10-120 karakter arası başlık>\nİÇERİK: <1-3 cümlelik içerik, insanları oy vermeye çağır>\nSORU: <anket sorusu>\nSEÇENEK: <seçenek 1>\nSEÇENEK: <seçenek 2>\nSEÇENEK: <seçenek 3 (isteğe bağlı)>\nSEÇENEK: <seçenek 4 (isteğe bağlı)>\nETİKETLER: <anket konusuyla alakalı 2-4 adet etiket, virgülle ayrılmış>',
     ].join("\n\n"),
     temperature: 1.1,
   })
@@ -279,6 +354,12 @@ export async function aiCreatePollTopic() {
       isPoll: true,
     })
     .returning()
+
+  // Generate and attach relevant tags to the poll topic
+  const tagsToAttach = extractTags(raw, category, title)
+  if (tagsToAttach.length > 0) {
+    await attachTopicTags(topic.id, tagsToAttach)
+  }
 
   const [poll] = await db
     .insert(polls)
@@ -654,6 +735,7 @@ export async function generateDailySummary() {
     })
     .returning()
 
+  await attachTopicTags(topic.id, ["ozet", "forum-ozeti", "gundem", "topluluk"])
   await db.insert(dailySummaries).values({ summaryDate: today, topicId: topic.id, content })
   await log(persona.profileId, "summary", title, { topicId: topic.id })
   return topic

@@ -89,9 +89,9 @@ export function EditProfileDialog({
         variant="outline"
         size="sm"
         onClick={() => setIsOpen(true)}
-        className="gap-1.5 border-border hover:bg-muted font-medium"
+        className="gap-1.5 border-white/25 bg-white/10 hover:bg-white/20 text-white font-medium shadow-xs transition-colors"
       >
-        <Edit3 className="size-3.5" />
+        <Edit3 className="size-3.5 text-cyan-300" />
         <span>Profili Düzenle</span>
       </Button>
 
