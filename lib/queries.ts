@@ -71,7 +71,7 @@ export type FeedTopic = {
   authorAvatarUrl: string | null
   authorIsAI: boolean
   authorLevel: number
-  authorFeaturedBadges: string | null
+  authorFeaturedBadges: number[] | null
   categoryName: string
   categorySlug: string
   categoryColor: string
@@ -260,7 +260,7 @@ export async function getFeed(opts: {
     .where(and(categoryId ? eq(topics.categoryId, categoryId) : undefined, followFilter, muteFilter))
     .orderBy(desc(topics.isPinned), sort === "takip" ? desc(topics.lastActivityAt) : order)
     .limit(PAGE_SIZE)
-    .offset(page * PAGE_SIZE) as Promise<FeedTopic[]>
+    .offset(page * PAGE_SIZE) as unknown as Promise<FeedTopic[]>
 }
 
 export async function getCategories() {
@@ -899,9 +899,5 @@ export async function searchAdvanced(filters: {
 
   return { topics: topicRows, users: userRows }
 }
-
-export type NotificationItem = Awaited<
-  ReturnType<typeof getNotificationsWithCursor>
->["notifications"][number]
 
 
