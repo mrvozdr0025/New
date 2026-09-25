@@ -9,11 +9,13 @@ import { BadgeShowcase } from "@/components/badge-showcase"
 import { FollowButton } from "@/components/follow-button"
 import { MuteButton } from "@/components/mute-button"
 import { Navbar } from "@/components/navbar"
+import { Breadcrumb } from "@/components/breadcrumb"
 import { ThemePicker } from "@/components/theme-picker"
 import { TopicCard } from "@/components/topic-card"
 import { EditProfileDialog } from "@/components/edit-profile-dialog"
 import { LevelBadge } from "@/components/level-badge"
 import { LevelRoadmapDialog } from "@/components/level-roadmap-dialog"
+import { Breadcrumb } from "@/components/breadcrumb"
 import { isFollowing } from "@/app/actions/follow"
 import { getTheme, PROFILE_THEMES } from "@/lib/gamification"
 import { getLevelProgressInfo } from "@/lib/level-tiers"
@@ -62,6 +64,7 @@ export default async function ProfilePage({
     <>
       <Navbar />
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
+        <Breadcrumb items={[{ label: "Topluluk", href: "/liderler" }, { label: `@${profile.username}` }]} />
       {profile.coverUrl && (
         <div className="relative mb-4 h-36 w-full overflow-hidden rounded-2xl border border-border shadow-md sm:h-52">
           {/* eslint-disable-next-line @next/next/no-img-element */}

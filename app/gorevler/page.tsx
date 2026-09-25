@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Navbar } from "@/components/navbar"
+import { Breadcrumb } from "@/components/breadcrumb"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -37,6 +38,7 @@ export default async function QuestsPage() {
     <>
       <Navbar />
       <main className="mx-auto w-full max-w-5xl px-4 py-6">
+        <Breadcrumb items={[{ label: "Görevler & Liderlik" }]} />
         <h1 className="text-2xl font-bold text-foreground">Görevler &amp; Liderlik</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Haftalık görevleri tamamla, serini koru, sezonda zirveye oyna.

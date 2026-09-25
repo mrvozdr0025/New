@@ -154,8 +154,12 @@ export const topics = pgTable(
     slug: text("slug").notNull().unique(),
     title: text("title").notNull(),
     content: text("content").notNull(),
-    categoryId: integer("categoryId").notNull(),
-    authorProfileId: integer("authorProfileId").notNull(),
+    categoryId: integer("categoryId")
+      .notNull()
+      .references(() => categories.id, { onDelete: "cascade" }),
+    authorProfileId: integer("authorProfileId")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
     isAISuggested: boolean("isAISuggested").notNull().default(false),
     isHot: boolean("isHot").notNull().default(false),
     isDailyTopic: boolean("isDailyTopic").notNull().default(false),
@@ -173,8 +177,11 @@ export const topics = pgTable(
   },
   (t) => [
     index("topics_category_idx").on(t.categoryId),
+    index("topics_author_idx").on(t.authorProfileId),
     index("topics_activity_idx").on(t.lastActivityAt),
     index("topics_score_idx").on(t.score),
+    index("topics_created_idx").on(t.createdAt),
+    index("topics_cursor_idx").on(t.isPinned, t.lastActivityAt, t.id),
   ],
 )
 
@@ -182,9 +189,13 @@ export const comments = pgTable(
   "comments",
   {
     id: serial("id").primaryKey(),
-    topicId: integer("topicId").notNull(),
+    topicId: integer("topicId")
+      .notNull()
+      .references(() => topics.id, { onDelete: "cascade" }),
     parentId: integer("parentId"),
-    authorProfileId: integer("authorProfileId").notNull(),
+    authorProfileId: integer("authorProfileId")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
     score: integer("score").notNull().default(0),
     isRoast: boolean("isRoast").notNull().default(false),
@@ -196,6 +207,8 @@ export const comments = pgTable(
   (t) => [
     index("comments_topic_idx").on(t.topicId),
     index("comments_author_idx").on(t.authorProfileId),
+    index("comments_created_idx").on(t.createdAt),
+    index("comments_topic_parent_idx").on(t.topicId, t.parentId),
   ],
 )
 
@@ -236,16 +249,21 @@ export const notifications = pgTable(
   "notifications",
   {
     id: serial("id").primaryKey(),
-    profileId: integer("profileId").notNull(), // recipient
-    actorProfileId: integer("actorProfileId"),
+    profileId: integer("profileId")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }), // recipient
+    actorProfileId: integer("actorProfileId").references(() => profiles.id, { onDelete: "set null" }),
     type: text("type").notNull(), // 'reply' | 'mention' | 'upvote' | 'badge' | 'system'
     message: text("message").notNull(),
-    topicId: integer("topicId"),
-    commentId: integer("commentId"),
+    topicId: integer("topicId").references(() => topics.id, { onDelete: "cascade" }),
+    commentId: integer("commentId").references(() => comments.id, { onDelete: "cascade" }),
     isRead: boolean("isRead").notNull().default(false),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
   },
-  (t) => [index("notifications_profile_idx").on(t.profileId)],
+  (t) => [
+    index("notifications_profile_idx").on(t.profileId),
+    index("notifications_cursor_idx").on(t.profileId, t.createdAt, t.id),
+  ],
 )
 
 export const tags = pgTable("tags", {
@@ -692,6 +710,38 @@ export const announcements = pgTable(
   },
   (t) => [index("announcements_active_idx").on(t.isActive)],
 )
+
+// Zamanlanmış Görevler (Cron Jobs) Yönetimi & Ayarları
+export const cronJobs = pgTable("cron_jobs", {
+  id: text("id").primaryKey(), // 'daily-topic' | 'daily-summary' | 'ai-activity' | 'process-replies'
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  schedule: text("schedule").notNull(), // örn: "0 9 * * *"
+  endpoint: text("endpoint").notNull(), // örn: "/api/cron/daily-topic"
+  isEnabled: boolean("isEnabled").notNull().default(true),
+  lastRunAt: timestamp("lastRunAt"),
+  lastStatus: text("lastStatus").notNull().default("idle"), // 'success' | 'failed' | 'running' | 'idle'
+  lastError: text("lastError"),
+  lastResultSummary: text("lastResultSummary"),
+  runCount: integer("runCount").notNull().default(0),
+  nextScheduledAt: timestamp("nextScheduledAt"),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+})
+
+export const cronJobLogs = pgTable(
+  "cron_job_logs",
+  {
+    id: serial("id").primaryKey(),
+    cronJobId: text("cronJobId").notNull().references(() => cronJobs.id, { onDelete: "cascade" }),
+    status: text("status").notNull(), // 'success' | 'failed' | 'running'
+    durationMs: integer("durationMs"),
+    message: text("message"),
+    output: jsonb("output"),
+    createdAt: timestamp("createdAt").notNull().defaultNow(),
+  },
+  (t) => [index("cron_job_logs_job_idx").on(t.cronJobId, t.createdAt)],
+)
+
 
 
 

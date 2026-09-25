@@ -1,6 +1,7 @@
 import { Metadata } from "next"
 import Link from "next/link"
 import { Navbar } from "@/components/navbar"
+import { Breadcrumb } from "@/components/breadcrumb"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { getDetailedLeaderboard, type LeaderboardTimeframe } from "@/lib/queries"
@@ -45,6 +46,7 @@ export default async function LeaderboardPage({
       <Navbar />
 
       <main className="mx-auto w-full max-w-5xl px-4 py-8">
+        <Breadcrumb items={[{ label: "Liderlik Tablosu" }]} />
         {/* Header */}
         <div className="text-center sm:text-left mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-border/70 pb-6">
           <div className="flex items-center gap-3.5">

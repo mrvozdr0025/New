@@ -5,6 +5,7 @@ import {
   categories,
   comments,
   commentReactions,
+  notifications,
   polls,
   pollOptions,
   profiles,
@@ -14,7 +15,7 @@ import {
   userBadges,
   userMutes,
 } from "@/lib/db/schema"
-import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm"
+import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm"
 import { getCurrentProfile } from "@/lib/session"
 import { unstable_cache } from "next/cache"
 
@@ -49,14 +50,172 @@ const topicCols = {
   lastActivityAt: topics.lastActivityAt,
 }
 
-export type FeedTopic = Awaited<ReturnType<typeof getFeed>>[number]
+export type FeedTopic = {
+  id: number
+  slug: string
+  title: string
+  content: string
+  categoryId: number
+  score: number
+  commentCount: number
+  viewCount: number
+  isHot: boolean
+  isPinned: boolean
+  isDailyTopic: boolean
+  isPoll: boolean
+  acceptedCommentId: number | null
+  createdAt: Date
+  lastActivityAt: Date
+  authorUsername: string
+  authorDisplayName: string
+  authorAvatarUrl: string | null
+  authorIsAI: boolean
+  authorLevel: number
+  authorFeaturedBadges: string | null
+  categoryName: string
+  categorySlug: string
+  categoryColor: string
+}
+
+export function encodeCursor(data: unknown): string {
+  return Buffer.from(JSON.stringify(data)).toString("base64url")
+}
+
+export function decodeCursor<T = unknown>(str: string): T | null {
+  try {
+    const json = Buffer.from(str, "base64url").toString("utf8")
+    return JSON.parse(json) as T
+  } catch {
+    return null
+  }
+}
+
+export async function getFeedWithCursor(opts: {
+  sort?: FeedSort
+  categoryId?: number
+  cursor?: string | null
+  limit?: number
+  viewerProfileId?: number
+}) {
+  const { sort = "aktif", categoryId, cursor, limit = PAGE_SIZE, viewerProfileId } = opts
+
+  const order =
+    sort === "yeni"
+      ? desc(topics.createdAt)
+      : sort === "populer"
+        ? desc(topics.score)
+        : desc(topics.lastActivityAt)
+
+  // Decode cursor if provided
+  const cursorData = cursor ? decodeCursor<{ id: number; v: string | number }>(cursor) : null
+  let cursorFilter = undefined
+
+  if (cursorData) {
+    if (sort === "yeni") {
+      const d = new Date(cursorData.v)
+      cursorFilter = sql`(${topics.createdAt} < ${d} OR (${topics.createdAt} = ${d} AND ${topics.id} < ${cursorData.id}))`
+    } else if (sort === "populer") {
+      const s = Number(cursorData.v)
+      cursorFilter = sql`(${topics.score} < ${s} OR (${topics.score} = ${s} AND ${topics.id} < ${cursorData.id}))`
+    } else {
+      // aktif or takip
+      const d = new Date(cursorData.v)
+      cursorFilter = sql`(${topics.lastActivityAt} < ${d} OR (${topics.lastActivityAt} = ${d} AND ${topics.id} < ${cursorData.id}))`
+    }
+  }
+
+  // "Takip Ettiklerim": topics from followed users OR in followed categories
+  const followFilter =
+    sort === "takip" && viewerProfileId
+      ? sql`(
+          ${topics.authorProfileId} IN (
+            SELECT "targetId" FROM follows
+            WHERE "followerProfileId" = ${viewerProfileId} AND "targetType" = 'user'
+          )
+          OR ${topics.categoryId} IN (
+            SELECT "targetId" FROM follows
+            WHERE "followerProfileId" = ${viewerProfileId} AND "targetType" = 'category'
+          )
+        )`
+      : undefined
+
+  // Hide topics authored by users the viewer has muted
+  const muteFilter = viewerProfileId
+    ? sql`${topics.authorProfileId} NOT IN (
+        SELECT "mutedProfileId" FROM user_mutes WHERE "profileId" = ${viewerProfileId}
+      )`
+    : undefined
+
+  // Pinned topics only appear on the first page (no cursor)
+  const isPinnedFilter = cursorData ? eq(topics.isPinned, false) : undefined
+
+  const rows = await db
+    .select({
+      ...topicCols,
+      ...authorCols,
+      categoryName: categories.name,
+      categorySlug: categories.slug,
+      categoryColor: categories.color,
+    })
+    .from(topics)
+    .innerJoin(profiles, eq(topics.authorProfileId, profiles.id))
+    .innerJoin(categories, eq(topics.categoryId, categories.id))
+    .where(
+      and(
+        categoryId ? eq(topics.categoryId, categoryId) : undefined,
+        followFilter,
+        muteFilter,
+        isPinnedFilter,
+        cursorFilter
+      )
+    )
+    .orderBy(
+      cursorData ? order : desc(topics.isPinned),
+      desc(topics.id)
+    )
+    .limit(limit + 1)
+
+  const hasMore = rows.length > limit
+  const topicItems = hasMore ? rows.slice(0, limit) : rows
+  const lastItem = topicItems[topicItems.length - 1]
+
+  let nextCursor: string | null = null
+  if (hasMore && lastItem) {
+    let cursorVal: string | number
+    if (sort === "yeni") {
+      cursorVal = lastItem.createdAt.toISOString()
+    } else if (sort === "populer") {
+      cursorVal = lastItem.score
+    } else {
+      cursorVal = lastItem.lastActivityAt.toISOString()
+    }
+    nextCursor = encodeCursor({ id: lastItem.id, v: cursorVal })
+  }
+
+  return {
+    topics: topicItems as FeedTopic[],
+    nextCursor,
+    hasMore,
+  }
+}
 
 export async function getFeed(opts: {
   sort?: FeedSort
   categoryId?: number
   page?: number
+  cursor?: string | null
   viewerProfileId?: number
 }) {
+  if (opts.cursor) {
+    const res = await getFeedWithCursor({
+      sort: opts.sort,
+      categoryId: opts.categoryId,
+      cursor: opts.cursor,
+      viewerProfileId: opts.viewerProfileId,
+    })
+    return res.topics
+  }
+
   const { sort = "aktif", categoryId, page = 0, viewerProfileId } = opts
   const order =
     sort === "yeni"
@@ -101,7 +260,7 @@ export async function getFeed(opts: {
     .where(and(categoryId ? eq(topics.categoryId, categoryId) : undefined, followFilter, muteFilter))
     .orderBy(desc(topics.isPinned), sort === "takip" ? desc(topics.lastActivityAt) : order)
     .limit(PAGE_SIZE)
-    .offset(page * PAGE_SIZE)
+    .offset(page * PAGE_SIZE) as Promise<FeedTopic[]>
 }
 
 export async function getCategories() {
@@ -206,6 +365,159 @@ export async function getTopicComments(topicId: number) {
     ...c,
     reactions: reactionsMap[c.id] ?? [],
   }))
+}
+
+export async function getTopicCommentsWithCursor(
+  topicId: number,
+  opts?: {
+    cursor?: string | null
+    limit?: number
+  }
+) {
+  const limit = opts?.limit ?? 30
+  const cursorData = opts?.cursor ? decodeCursor<{ id: number; v: string }>(opts.cursor) : null
+  let cursorFilter = undefined
+
+  if (cursorData) {
+    const d = new Date(cursorData.v)
+    cursorFilter = sql`(${comments.createdAt} > ${d} OR (${comments.createdAt} = ${d} AND ${comments.id} > ${cursorData.id}))`
+  }
+
+  const rows = await db
+    .select({
+      id: comments.id,
+      parentId: comments.parentId,
+      content: comments.content,
+      score: comments.score,
+      isFunny: comments.isFunny,
+      isDeleted: comments.isDeleted,
+      createdAt: comments.createdAt,
+      authorProfileId: comments.authorProfileId,
+      ...authorCols,
+    })
+    .from(comments)
+    .innerJoin(profiles, eq(comments.authorProfileId, profiles.id))
+    .where(and(eq(comments.topicId, topicId), cursorFilter))
+    .orderBy(asc(comments.createdAt), asc(comments.id))
+    .limit(limit + 1)
+
+  const hasMore = rows.length > limit
+  const items = hasMore ? rows.slice(0, limit) : rows
+  const lastItem = items[items.length - 1]
+
+  let nextCursor: string | null = null
+  if (hasMore && lastItem) {
+    nextCursor = encodeCursor({ id: lastItem.id, v: lastItem.createdAt.toISOString() })
+  }
+
+  const commentIds = items.map((c) => c.id)
+  let reactionsMap: Record<number, { emoji: string; count: number; hasReacted: boolean }[]> = {}
+
+  if (commentIds.length > 0) {
+    const viewer = await getCurrentProfile()
+    const reactionRows = await db
+      .select({
+        commentId: commentReactions.commentId,
+        emoji: commentReactions.emoji,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(commentReactions)
+      .where(inArray(commentReactions.commentId, commentIds))
+      .groupBy(commentReactions.commentId, commentReactions.emoji)
+
+    const viewerReactions = viewer
+      ? await db
+          .select({
+            commentId: commentReactions.commentId,
+            emoji: commentReactions.emoji,
+          })
+          .from(commentReactions)
+          .where(
+            and(
+              inArray(commentReactions.commentId, commentIds),
+              eq(commentReactions.profileId, viewer.id)
+            )
+          )
+      : []
+
+    const viewerSet = new Set(viewerReactions.map((r) => `${r.commentId}:${r.emoji}`))
+
+    for (const cid of commentIds) {
+      reactionsMap[cid] = []
+    }
+
+    for (const r of reactionRows) {
+      if (!reactionsMap[r.commentId]) reactionsMap[r.commentId] = []
+      reactionsMap[r.commentId].push({
+        emoji: r.emoji,
+        count: r.count,
+        hasReacted: viewerSet.has(`${r.commentId}:${r.emoji}`),
+      })
+    }
+  }
+
+  return {
+    comments: items.map((c) => ({
+      ...c,
+      reactions: reactionsMap[c.id] ?? [],
+    })),
+    nextCursor,
+    hasMore,
+  }
+}
+
+export type NotificationItem = {
+  id: number
+  type: string
+  message: string
+  isRead: boolean
+  createdAt: Date
+  topicSlug: string | null
+}
+
+export async function getNotificationsWithCursor(opts: {
+  profileId: number
+  cursor?: string | null
+  limit?: number
+}) {
+  const { profileId, cursor, limit = 20 } = opts
+  const cursorData = cursor ? decodeCursor<{ id: number; v: string }>(cursor) : null
+  let cursorFilter = undefined
+
+  if (cursorData) {
+    const d = new Date(cursorData.v)
+    cursorFilter = sql`(${notifications.createdAt} < ${d} OR (${notifications.createdAt} = ${d} AND ${notifications.id} < ${cursorData.id}))`
+  }
+
+  const rows = await db
+    .select({
+      id: notifications.id,
+      type: notifications.type,
+      message: notifications.message,
+      isRead: notifications.isRead,
+      createdAt: notifications.createdAt,
+      topicSlug: topics.slug,
+    })
+    .from(notifications)
+    .leftJoin(topics, eq(notifications.topicId, topics.id))
+    .where(and(eq(notifications.profileId, profileId), cursorFilter))
+    .orderBy(desc(notifications.createdAt), desc(notifications.id))
+    .limit(limit + 1)
+
+  const hasMore = rows.length > limit
+  const items = hasMore ? rows.slice(0, limit) : rows
+  const lastItem = items[items.length - 1]
+
+  let nextCursor: string | null = null
+  if (hasMore && lastItem) {
+    nextCursor = encodeCursor({ id: lastItem.id, v: lastItem.createdAt.toISOString() })
+  }
+
+  return {
+    notifications: items,
+    nextCursor,
+    hasMore,
+  }
 }
 
 export async function getPollForTopic(topicId: number) {
@@ -587,5 +899,53 @@ export async function searchAdvanced(filters: {
 
   return { topics: topicRows, users: userRows }
 }
+
+export async function getNotificationsWithCursor(opts: {
+  profileId: number
+  cursor?: string | null
+  limit?: number
+}) {
+  const limit = opts.limit ?? 20
+  const cursorData = opts.cursor
+    ? decodeCursor<{ id: number; createdAt: string }>(opts.cursor)
+    : null
+
+  const cursorFilter = cursorData
+    ? sql`(${notifications.createdAt} < ${new Date(cursorData.createdAt)} OR (${notifications.createdAt} = ${new Date(cursorData.createdAt)} AND ${notifications.id} < ${cursorData.id}))`
+    : undefined
+
+  const rows = await db
+    .select({
+      id: notifications.id,
+      type: notifications.type,
+      message: notifications.message,
+      isRead: notifications.isRead,
+      createdAt: notifications.createdAt,
+      topicSlug: topics.slug,
+    })
+    .from(notifications)
+    .leftJoin(topics, eq(notifications.topicId, topics.id))
+    .where(and(eq(notifications.profileId, opts.profileId), cursorFilter))
+    .orderBy(desc(notifications.createdAt), desc(notifications.id))
+    .limit(limit + 1)
+
+  const hasMore = rows.length > limit
+  const items = hasMore ? rows.slice(0, limit) : rows
+  const last = items[items.length - 1]
+  const nextCursor =
+    hasMore && last
+      ? encodeCursor({ id: last.id, createdAt: last.createdAt.toISOString() })
+      : null
+
+  return {
+    notifications: items,
+    nextCursor,
+    hasMore,
+  }
+}
+
+export type NotificationItem = Awaited<
+  ReturnType<typeof getNotificationsWithCursor>
+>["notifications"][number]
 
 

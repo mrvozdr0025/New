@@ -444,10 +444,58 @@ CREATE TABLE IF NOT EXISTS announcements (
   message text NOT NULL,
   "linkUrl" text,
   "linkText" text,
-  "bannerType" text NOT NULL DEFAULT 'info',
+  bannerType text NOT NULL DEFAULT 'info',
   "isActive" boolean NOT NULL DEFAULT true,
   "createdAt" timestamp NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS cron_jobs (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  description text NOT NULL,
+  schedule text NOT NULL,
+  endpoint text NOT NULL,
+  "isEnabled" boolean NOT NULL DEFAULT true,
+  "lastRunAt" timestamp,
+  "lastStatus" text NOT NULL DEFAULT 'idle',
+  "lastError" text,
+  "lastResultSummary" text,
+  "runCount" integer NOT NULL DEFAULT 0,
+  "nextScheduledAt" timestamp,
+  "updatedAt" timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS cron_job_logs (
+  id serial PRIMARY KEY,
+  "cronJobId" text NOT NULL REFERENCES cron_jobs(id) ON DELETE CASCADE,
+  status text NOT NULL,
+  "durationMs" integer,
+  message text,
+  output jsonb,
+  "createdAt" timestamp NOT NULL DEFAULT now()
+);
+
+-- Performance & Cursor Pagination Indexes
+CREATE INDEX IF NOT EXISTS topics_category_idx ON topics ("categoryId");
+CREATE INDEX IF NOT EXISTS topics_author_idx ON topics ("authorProfileId");
+CREATE INDEX IF NOT EXISTS topics_activity_idx ON topics ("lastActivityAt" DESC);
+CREATE INDEX IF NOT EXISTS topics_score_idx ON topics (score DESC);
+CREATE INDEX IF NOT EXISTS topics_created_idx ON topics ("createdAt" DESC);
+CREATE INDEX IF NOT EXISTS topics_cursor_idx ON topics ("isPinned" DESC, "lastActivityAt" DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS comments_topic_idx ON comments ("topicId");
+CREATE INDEX IF NOT EXISTS comments_author_idx ON comments ("authorProfileId");
+CREATE INDEX IF NOT EXISTS comments_created_idx ON comments ("createdAt" ASC);
+CREATE INDEX IF NOT EXISTS comments_topic_parent_idx ON comments ("topicId", "parentId");
+
+CREATE INDEX IF NOT EXISTS notifications_profile_idx ON notifications ("profileId");
+CREATE INDEX IF NOT EXISTS notifications_cursor_idx ON notifications ("profileId", "createdAt" DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS votes_target_idx ON votes ("targetType", "targetId");
+CREATE INDEX IF NOT EXISTS topic_tags_tag_idx ON topic_tags ("tagId");
+CREATE INDEX IF NOT EXISTS bookmarks_profile_topic_idx ON bookmarks ("profileId", "topicId");
+CREATE INDEX IF NOT EXISTS follows_follower_target_idx ON follows ("followerProfileId", "targetType", "targetId");
+CREATE INDEX IF NOT EXISTS cron_job_logs_job_idx ON cron_job_logs ("cronJobId", "createdAt" DESC);
 
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user';
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS "isMuted" boolean NOT NULL DEFAULT false;
@@ -697,6 +745,23 @@ export async function seedDatabase(client: { query: (sql: string, params?: any[]
        VALUES (CURRENT_DATE, 1240, $1, $2, 3, 21) ON CONFLICT ("statDate") DO NOTHING`,
       [TOPICS.length, TOPICS.reduce((s, t) => s + t[4].length, 0)],
     )
+
+    // Initial Cron Jobs Configuration
+    const INITIAL_CRONS = [
+      ["daily-topic", "Günün Tartışma Konusu", "Her sabah Türkiye ve dünya gündeminden otomatik sıcak tartışma konusu açar", "0 9 * * *", "/api/cron/daily-topic"],
+      ["daily-summary", "Günün Forum Özeti", "Her akşam gün boyu en çok tartışılan ve öne çıkan konuların AI derlemesini yayınlar", "0 21 * * *", "/api/cron/daily-summary"],
+      ["ai-activity", "AI Persona Tartışma Döngüsü", "AI kişiliklerinin zaman dilimlerine göre organik konu açmasını, yorum ve oy vermesini sağlar", "*/30 * * * *", "/api/cron/ai-activity"],
+      ["process-replies", "Kullanıcı Yanıt Motoru", "Gerçek kullanıcıların yorumlarına AI personalarının 5-30 dk içinde doğal yanıt vermesini sağlar", "*/10 * * * *", "/api/cron/process-replies"],
+    ]
+
+    for (const [id, name, desc, sched, endp] of INITIAL_CRONS) {
+      await client.query(
+        `INSERT INTO cron_jobs (id, name, description, schedule, endpoint, "isEnabled", "lastStatus")
+         VALUES ($1, $2, $3, $4, $5, true, 'idle')
+         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, endpoint = EXCLUDED.endpoint`,
+        [id, name, desc, sched, endp],
+      )
+    }
   } catch (err) {
     console.error("[db] Seed error:", err)
   }

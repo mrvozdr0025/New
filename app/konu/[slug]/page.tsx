@@ -16,6 +16,9 @@ import { RelatedTopics } from "@/components/related-topics"
 import { ReadingProgressBar } from "@/components/reading-progress-bar"
 import { LevelBadge } from "@/components/level-badge"
 import { ShareButtons } from "@/components/share-buttons"
+import { Breadcrumb } from "@/components/breadcrumb"
+import { TopicFaq } from "@/components/topic-faq"
+import { ContentQualityBadge } from "@/components/content-quality-badge"
 import { isFollowing, getFollowerCount } from "@/app/actions/follow"
 import { isTopicBookmarked } from "@/app/actions/bookmarks"
 import { timeAgo } from "@/lib/format"
@@ -32,8 +35,11 @@ import { getCurrentProfile } from "@/lib/session"
 import { Bot, CheckCircle2, Eye, Flame, Lock, MessageSquare, Pin } from "lucide-react"
 
 import {
+  calculateContentQualityScore,
   cleanTextForMeta,
+  extractTopicFaq,
   generateBreadcrumbJsonLd,
+  generateFaqJsonLd,
   generateTopicDiscussionJsonLd,
   getBaseUrl,
 } from "@/lib/seo"
@@ -121,6 +127,15 @@ export default async function TopicPage({
     profile && (profile.id === topic.authorProfileId || profile.isAdmin),
   )
 
+  const faqs = extractTopicFaq(topic.title, topic.content, topic.categoryName)
+  const faqJsonLd = generateFaqJsonLd(faqs)
+
+  const qualityReport = calculateContentQualityScore(topic.title, topic.content, {
+    tagsCount: topicTagList.length,
+    commentCount: topic.commentCount,
+    hasPoll: Boolean(poll),
+  })
+
   const forumPostingJsonLd = generateTopicDiscussionJsonLd({
     title: topic.title,
     content: topic.content,
@@ -136,24 +151,26 @@ export default async function TopicPage({
     categorySlug: topic.categorySlug,
   })
 
-  const breadcrumbJsonLd = generateBreadcrumbJsonLd([
-    { name: "Ana Sayfa", url: "/" },
-    { name: topic.categoryName, url: `/kategori/${topic.categorySlug}` },
-    { name: topic.title, url: `/konu/${topic.slug}` },
-  ])
-
   return (
     <>
       <Navbar />
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
+      <Breadcrumb
+        items={[
+          { label: topic.categoryName, href: `/kategori/${topic.categorySlug}` },
+          { label: topic.title },
+        ]}
+      />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(forumPostingJsonLd) }}
       />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
-      />
+      {faqJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        />
+      )}
       <LiveTopicUpdates
         topicId={topic.id}
         initialCommentCount={topic.commentCount}
@@ -175,6 +192,7 @@ export default async function TopicPage({
           >
             {topic.categoryName}
           </Link>
+          <ContentQualityBadge report={qualityReport} />
           {topic.isPinned && (
             <Badge variant="outline" className="gap-1 text-[10px]">
               <Pin className="size-3" /> Sabit
@@ -291,6 +309,8 @@ export default async function TopicPage({
         </div>
       </article>
 
+      {faqs.length > 0 && <TopicFaq faqs={faqs} />}
+
       <section className="mt-6" aria-label="Yorumlar">
         <h2 className="mb-3 text-sm font-semibold text-muted-foreground">
           {comments.length} Yorum
@@ -307,6 +327,8 @@ export default async function TopicPage({
           isLocked={topic.isLocked}
           acceptedCommentId={topic.acceptedCommentId}
           canAccept={canAccept}
+          topicTitle={topic.title}
+          topicSlug={topic.slug}
         />
       </section>
 

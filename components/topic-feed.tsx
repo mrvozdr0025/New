@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { InfiniteFeed } from "@/components/infinite-feed"
 import { TopicCard } from "@/components/topic-card"
-import { getFeed, PAGE_SIZE, type FeedSort } from "@/lib/queries"
+import { getFeed, PAGE_SIZE, encodeCursor, type FeedSort } from "@/lib/queries"
 import { getBookmarkedTopicIds } from "@/app/actions/bookmarks"
 import { cn } from "@/lib/utils"
 
@@ -72,8 +72,24 @@ export async function TopicFeed({
         ))
       )}
 
-      {feed.length === PAGE_SIZE && (
-        <InfiniteFeed sort={sort} categoryId={categoryId} isAuthed={isAuthed} pageSize={PAGE_SIZE} />
+      {feed.length >= PAGE_SIZE && (
+        <InfiniteFeed
+          sort={sort}
+          categoryId={categoryId}
+          isAuthed={isAuthed}
+          pageSize={PAGE_SIZE}
+          initialCursor={(() => {
+            const lastItem = feed[feed.length - 1]
+            if (!lastItem) return null
+            const cursorVal =
+              sort === "yeni"
+                ? lastItem.createdAt.toISOString()
+                : sort === "populer"
+                ? lastItem.score
+                : lastItem.lastActivityAt.toISOString()
+            return encodeCursor({ id: lastItem.id, v: cursorVal })
+          })()}
+        />
       )}
     </div>
   )

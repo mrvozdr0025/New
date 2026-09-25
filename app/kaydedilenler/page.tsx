@@ -2,6 +2,7 @@ import { Metadata } from "next"
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { Breadcrumb } from "@/components/breadcrumb"
 import { TopicCard } from "@/components/topic-card"
 import { Button } from "@/components/ui/button"
 import { getUserBookmarks } from "@/app/actions/bookmarks"
@@ -25,6 +26,7 @@ export default async function BookmarksPage() {
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="mx-auto w-full max-w-4xl px-4 py-6 sm:py-8">
+        <Breadcrumb items={[{ label: "Kaydedilenler" }]} />
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-border/80 pb-4">
           <div className="flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 border border-primary/20 text-primary">

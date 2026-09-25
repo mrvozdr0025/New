@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/sidebar"
 import { TopicFeed } from "@/components/topic-feed"
 import { CategoryIcon } from "@/components/category-icon"
 import { FollowButton } from "@/components/follow-button"
+import { Breadcrumb } from "@/components/breadcrumb"
 import { Rss } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { isFollowing } from "@/app/actions/follow"
@@ -95,6 +96,7 @@ export default async function CategoryPage({
       />
       <main className="mx-auto grid max-w-6xl grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[1fr_300px]">
         <div>
+          <Breadcrumb items={[{ label: category.name }]} />
           <header className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-card/60 p-4 backdrop-blur-sm">
             <span
               className="flex size-11 items-center justify-center rounded-xl"

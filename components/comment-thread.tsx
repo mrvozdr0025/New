@@ -11,7 +11,8 @@ import { LevelBadge } from "@/components/level-badge"
 import { RichContent } from "@/components/rich-content"
 import { timeAgo } from "@/lib/format"
 import type { TopicComment } from "@/lib/queries"
-import { Award, Bot, CheckCircle2, Laugh, MessageCircle, Quote } from "lucide-react"
+import { Award, Bot, CheckCircle2, Laugh, MessageCircle, Quote, Share2 } from "lucide-react"
+import { CommentShareDialog } from "@/components/comment-share-dialog"
 
 type CommentNode = TopicComment & { children: CommentNode[] }
 
@@ -37,6 +38,8 @@ export function CommentThread({
   isLocked,
   acceptedCommentId = null,
   canAccept = false,
+  topicTitle = "Forum Tartışması",
+  topicSlug = "",
 }: {
   comments: TopicComment[]
   topicId: number
@@ -44,6 +47,8 @@ export function CommentThread({
   isLocked: boolean
   acceptedCommentId?: number | null
   canAccept?: boolean
+  topicTitle?: string
+  topicSlug?: string
 }) {
   const tree = useMemo(() => {
     const roots = buildTree(comments)
@@ -72,6 +77,8 @@ export function CommentThread({
           depth={0}
           acceptedCommentId={acceptedCommentId}
           canAccept={canAccept}
+          topicTitle={topicTitle}
+          topicSlug={topicSlug}
         />
       ))}
     </div>
@@ -90,6 +97,8 @@ function CommentItem({
   depth,
   acceptedCommentId,
   canAccept,
+  topicTitle = "Forum Tartışması",
+  topicSlug = "",
 }: {
   node: CommentNode
   topicId: number
@@ -98,8 +107,11 @@ function CommentItem({
   depth: number
   acceptedCommentId: number | null
   canAccept: boolean
+  topicTitle?: string
+  topicSlug?: string
 }) {
   const [replying, setReplying] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const [quotePrefill, setQuotePrefill] = useState("")
   const [acceptPending, startAcceptTransition] = useTransition()
 
@@ -208,6 +220,16 @@ function CommentItem({
                 <Quote className="size-3.5" /> Alıntıla
               </button>
             )}
+            {!node.isDeleted && (
+              <button
+                type="button"
+                onClick={() => setSharing(true)}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                title="Bu yanıtı paylaş veya sosyal kart oluştur"
+              >
+                <Share2 className="size-3.5" /> Paylaş
+              </button>
+            )}
             {canAccept && !node.isDeleted && (
               <button
                 type="button"
@@ -225,6 +247,19 @@ function CommentItem({
               </button>
             )}
           </div>
+          {sharing && (
+            <CommentShareDialog
+              open={sharing}
+              onOpenChange={setSharing}
+              commentId={node.id}
+              commentText={node.content}
+              authorUsername={node.authorUsername}
+              topicTitle={topicTitle}
+              topicSlug={topicSlug}
+              score={node.score}
+              isAccepted={isAccepted}
+            />
+          )}
           {replying && (
             <div className="mt-2">
               <CommentForm
@@ -253,6 +288,8 @@ function CommentItem({
                   depth={depth + 1}
                   acceptedCommentId={acceptedCommentId}
                   canAccept={canAccept}
+                  topicTitle={topicTitle}
+                  topicSlug={topicSlug}
                 />
               ))}
             </div>

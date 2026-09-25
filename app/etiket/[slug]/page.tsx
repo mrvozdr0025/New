@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Navbar } from "@/components/navbar"
+import { Breadcrumb } from "@/components/breadcrumb"
 import { TopicCard } from "@/components/topic-card"
 import { getPopularTags, getTagBySlug, getTopicsByTag } from "@/lib/queries"
 import { getCurrentProfile } from "@/lib/session"
@@ -70,6 +71,7 @@ export default async function TagPage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
+        <Breadcrumb items={[{ label: `#${tag.name}` }]} />
         <header className="glass mb-5 rounded-xl border border-border p-5">
           <div className="flex items-center gap-2">
             <Tag className="size-5 text-primary" />

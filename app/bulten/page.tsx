@@ -2,6 +2,7 @@ import { Metadata } from "next"
 import Link from "next/link"
 import { ArrowLeft, CheckCircle2, Mail, Send, Sparkles } from "lucide-react"
 import { Navbar } from "@/components/navbar"
+import { Breadcrumb } from "@/components/breadcrumb"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -21,15 +22,7 @@ export default async function PublicNewsletterPage() {
       <Navbar />
 
       <main className="mx-auto w-full max-w-4xl px-4 py-8">
-        {/* Breadcrumb */}
-        <div className="mb-6 flex items-center gap-2 text-xs text-muted-foreground">
-          <Link href="/" className="hover:text-foreground flex items-center gap-1">
-            <ArrowLeft className="size-3.5" />
-            Ana Sayfa
-          </Link>
-          <span>/</span>
-          <span className="text-foreground">Bülten</span>
-        </div>
+        <Breadcrumb items={[{ label: "Bülten" }]} />
 
         {/* Hero Section */}
         <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-b from-primary/10 via-card to-card p-6 sm:p-10 shadow-lg">
