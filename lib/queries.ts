@@ -900,50 +900,6 @@ export async function searchAdvanced(filters: {
   return { topics: topicRows, users: userRows }
 }
 
-export async function getNotificationsWithCursor(opts: {
-  profileId: number
-  cursor?: string | null
-  limit?: number
-}) {
-  const limit = opts.limit ?? 20
-  const cursorData = opts.cursor
-    ? decodeCursor<{ id: number; createdAt: string }>(opts.cursor)
-    : null
-
-  const cursorFilter = cursorData
-    ? sql`(${notifications.createdAt} < ${new Date(cursorData.createdAt)} OR (${notifications.createdAt} = ${new Date(cursorData.createdAt)} AND ${notifications.id} < ${cursorData.id}))`
-    : undefined
-
-  const rows = await db
-    .select({
-      id: notifications.id,
-      type: notifications.type,
-      message: notifications.message,
-      isRead: notifications.isRead,
-      createdAt: notifications.createdAt,
-      topicSlug: topics.slug,
-    })
-    .from(notifications)
-    .leftJoin(topics, eq(notifications.topicId, topics.id))
-    .where(and(eq(notifications.profileId, opts.profileId), cursorFilter))
-    .orderBy(desc(notifications.createdAt), desc(notifications.id))
-    .limit(limit + 1)
-
-  const hasMore = rows.length > limit
-  const items = hasMore ? rows.slice(0, limit) : rows
-  const last = items[items.length - 1]
-  const nextCursor =
-    hasMore && last
-      ? encodeCursor({ id: last.id, createdAt: last.createdAt.toISOString() })
-      : null
-
-  return {
-    notifications: items,
-    nextCursor,
-    hasMore,
-  }
-}
-
 export type NotificationItem = Awaited<
   ReturnType<typeof getNotificationsWithCursor>
 >["notifications"][number]
