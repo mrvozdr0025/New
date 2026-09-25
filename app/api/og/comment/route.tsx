@@ -1,7 +1,9 @@
 import { ImageResponse } from "next/og"
 import { type NextRequest } from "next/server"
 
-export const runtime = "edge"
+// Run this image route on Node.js so it is deployed as a serverless function,
+// avoiding the strict 1 MB Edge Function bundle limit.
+export const runtime = "nodejs"
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
